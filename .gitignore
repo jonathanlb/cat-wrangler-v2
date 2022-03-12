@@ -1,0 +1,4 @@
+.env
+config/*.pem
+dist/*
+node_modules/*
