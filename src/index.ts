@@ -1,4 +1,4 @@
-const CognitoExpress = require('cognito-express');
+import CognitoExpress from 'cognito-express';
 import Debug from 'debug';
 import express from 'express';
 import * as dotenv from 'dotenv';
@@ -28,7 +28,9 @@ app.use(express.json());
 const router = express.Router();
 
 useCors(app);
-useCognito(app);
+if (getEnv('NO_AUTH')) {
+  useCognito(app);
+}
 app.use('/', router);
 
 // TODO: configure routes here
@@ -82,7 +84,7 @@ function getEnv(envVar: string, noThrow?: boolean): string | undefined {
 function useCognito(app: express.Application) {
   const region = getEnv('AWS_REGION', true);
   const poolId = getEnv('AWS_USER_POOL_ID', true);
-  
+
   if (region && poolId) {
     const cognito = new CognitoExpress({
       region: region,
@@ -97,7 +99,7 @@ function useCognito(app: express.Application) {
       if (req.method === 'OPTIONS') {
         next();
       } else {
-        let accessTokenFromClient = 
+        const accessTokenFromClient =
           req.headers['authorization']?.replace(/^[Bb]earer\s+/, '');
         if (!accessTokenFromClient) {
           return res.status(401).send('Access Token missing from header');
@@ -108,9 +110,9 @@ function useCognito(app: express.Application) {
           accessTokenFromClient,
           function (err: Error, response: Response) {
             if (err) return res.status(401).send(err);
-            else next();   
+            else next();
           });
-      } 
+      }
     });
   } else {
     debug('missing Cognito config, check env variables');
