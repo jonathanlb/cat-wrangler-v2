@@ -2,10 +2,17 @@ import Debug from 'debug';
 import sqlite3 from 'sqlite3';
 import { Database, open } from 'sqlite';
 
-const debug = Debug('rsvp:server');
-const error = Debug('rsvp:server:error');
+const debug = Debug('rsvp:timekeeper');
+const error = Debug('rsvp:timekeeper:error');
 
-export interface ServerOpts {
+export interface ParticipantOptions {
+  email?: string,
+  id?: number,
+  organizer?: boolean,
+  section?: string,
+}
+
+export interface TimeKeeperOpts {
   dbFilename: string
 }
 
@@ -15,20 +22,62 @@ export interface Venue {
   address: string
 }
 
-export class Server {
-  config: ServerOpts;
+export function validateYyyyMmDd(yyyymmdd: string): void {
+  if (!yyyymmdd?.match(/^[0-9]{4}[/-][0-9]{1,2}[/-][0-9]{1,2}$/)) {
+    throw new Error(`yyyymmdd validation: ${yyyymmdd}`);
+  }
+}
 
-  constructor(opts: ServerOpts) {
+export function validateHhMm(hhmm: string): void {
+  if (!hhmm?.match(/^[0-9]{1,2}:[0-9]{2}$/)) {
+    throw new Error(`hhmm validation: ${hhmm}`);
+  }
+}
+
+export function validateDuration(duration: string): void {
+  if (!duration?.match(/^[0-9]+m$/)) {
+    throw new Error(`duration validation: ${duration}`);
+  }
+}
+
+export class TimeKeeper {
+  config: TimeKeeperOpts;
+
+  constructor(opts: TimeKeeperOpts) {
     this.config = {
       dbFilename: opts.dbFilename
     };
   }
 
-  private async openDb(): Promise<Database> {
-    return open<sqlite3.Database, sqlite3.Statement>({
-      filename: this.config.dbFilename,
-      driver: sqlite3.Database
+  /**
+   * @return a promise to the unique new dateTime id.
+   */
+  async createDateTime(
+    event: number, yyyymmdd: string, hhmm: string, duration: string,
+    cachedDb?: Database):
+    Promise<number> {
+    validateYyyyMmDd(yyyymmdd);
+    validateHhMm(hhmm);
+    validateDuration(duration);
+    const ts = new Date().getTime();
+    const query =
+      'INSERT INTO dateTimes(event, yyyymmdd, hhmm, duration) VALUES(:event, :yyyymmdd, :hhmm, :duration)';
+    debug('createDateTime', query, event, yyyymmdd, hhmm, duration);
+    const db = cachedDb || await this.openDb();
+    const result = await db.run(query, {
+      ':event': event,
+      ':yyyymmdd': yyyymmdd,
+      ':hhmm': hhmm,
+      ':duration': duration
     });
+    const lastId = await result.lastID || 0;
+    if (lastId <= 0) {
+      throw new Error(`Unchecked error createDateTime: ${query} :${yyyymmdd} :${hhmm} :${duration}`);
+    }
+    if (!cachedDb) {
+      db.close();
+    }
+    return lastId;
   }
 
   /**
@@ -37,7 +86,7 @@ export class Server {
   async createEvent(name: string, venue: number, description: string, cachedDb?: Database):
     Promise<number> {
     const query =
-      'INSERT INTO events(name, venue, description) VALUES (:name, :venue, :description)';
+      'INSERT INTO events(name, venue, description) VALUES(:name, :venue, :description)';
     debug('createEvent', query, name, venue, description);
     const db = cachedDb || await this.openDb();
     try {
@@ -56,7 +105,42 @@ export class Server {
         await db.close();
       }
     }
-    return 0;
+  }
+
+  /**
+   * @return a promise to the unique new participant id.
+   */
+  async createParticipant(name: string, opts?: ParticipantOptions, cachedDb?: Database):
+    Promise<number> {
+    const query = opts ?.id ?
+      'INSERT INTO participants(rowid, name, organizer, section, email) VALUES(:rowid, :name, :organizer, :section, :email)' :
+      'INSERT INTO participants(name, organizer, section, email) VALUES(:name, :organizer, :section, :email)';
+    const section = opts ?.section || '';
+    const organizer = opts ?.organizer || false;
+    const email = opts ?.email || '';
+    const queryValues: any = {
+      ':name': name,
+      ':organizer': organizer,
+      ':section': section,
+      ':email': email
+    };
+    if (opts ?.id) {
+      queryValues[':rowid'] = opts ?.id;
+    }
+    debug('createParticipant', query)
+    const db = cachedDb || await this.openDb();
+    try {
+      const result = await db.run(query, queryValues);
+      const lastId = result.lastID || 0;
+      if (lastId <= 0) {
+        throw new Error(`Unchecked error createParticipant: ${query} :${name} :${opts}`);
+      }
+      return lastId;
+    } finally {
+      if (!cachedDb) {
+        await db.close();
+      }
+    }
   }
 
   /**
@@ -65,7 +149,7 @@ export class Server {
   async createVenue(name: string, address: string, cachedDb?: Database):
     Promise<number> {
     const query =
-      'INSERT INTO venues(name, address) VALUES (:name, :address)';
+      'INSERT INTO venues(name, address) VALUES(:name, :address)';
     debug('createVenue', query, name, address);
     const db = cachedDb || await this.openDb();
     try {
@@ -79,7 +163,7 @@ export class Server {
       }
       return lastId;
     } catch (_err) {
-      const err: Error = _err as Error;
+      const err = _err as Error;
       if (err.message ===
         'SQLITE_CONSTRAINT: UNIQUE constraint failed: venues.name') {
         const venue = await this.getVenueByName(name, db) as Venue;
@@ -97,7 +181,6 @@ export class Server {
         await db.close();
       }
     }
-    return 0;
   }
 
   async getVenueByName(name: string, cachedDb?: Database): Promise<Venue | undefined> {
@@ -115,6 +198,13 @@ export class Server {
         address: result.address
       };
     }
+  }
+
+  async openDb(): Promise<Database> {
+    return open<sqlite3.Database, sqlite3.Statement>({
+      filename: this.config.dbFilename,
+      driver: sqlite3.Database
+    });
   }
 
   /**
