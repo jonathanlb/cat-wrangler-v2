@@ -158,6 +158,32 @@ describe('Sqlite server tests', () => {
     await db.close();
   });
 
+  test('Retrieves an event with a canceled time', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const eid = await tk.createEvent('Hula Contest', 17, 'Swing those hips!', db);
+    const did = await tk.createDateTime(eid, '2022-03-23', '16:31', '5m', db);
+    await tk.closeEvent(eid, 0, db);
+    const e = await tk.getEvent(eid, undefined, db);
+
+    const dt = {
+      duration: '5m',
+      event: eid,
+      hhmm: '16:31',
+      id: did,
+      yyyymmdd: '2022-03-23'
+    };
+    expect(e).toEqual({
+      dateTime: undefined,
+      dateTimes: [dt],
+      description: 'Swing those hips!',
+      id: eid,
+      name: 'Hula Contest',
+      venue: 17
+    });
+    await db.close();
+  });
+
   test('Queries for missing event', async () => {
     const tk = newTimeKeeper();
     const db = await tk.setup();

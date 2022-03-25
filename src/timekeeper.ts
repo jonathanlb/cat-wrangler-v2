@@ -15,7 +15,7 @@ export interface DateTime {
 }
 
 export interface Event {
-  dateTime: number,
+  dateTime?: number,
   dateTimes: Array<DateTime>,
   description: string,
   id: number,
@@ -97,19 +97,22 @@ export class TimeKeeper {
    */
   async closeEvent(eventId: number, dateTimeId: number, cachedDb?: Database):
     Promise<void> {
-    let query;
+    let query, queryOpts;
     if (dateTimeId > 0) {
       query = 'UPDATE events SET dateTime = :dateTimeId WHERE rowid = :eventId';
+      queryOpts = {
+        ':dateTimeId': dateTimeId,
+        ':eventId': eventId,
+      };
     } else {
       query = 'UPDATE events SET dateTime = -1 WHERE rowid = :eventId';
+      queryOpts = {
+        ':eventId': eventId,
+      };
     }
-    const queryOpts = {
-      ':dateTimeId': dateTimeId,
-      ':eventId': eventId,
-    };
-    debug('closeEvent', query);
+    debug('closeEvent', query, queryOpts);
     const db = cachedDb || await this.openDb();
-    db.run(query, queryOpts);
+    await db.run(query, queryOpts);
     if (!cachedDb) {
       await db.close();
     }
@@ -287,20 +290,29 @@ export class TimeKeeper {
       }
 
       // Put the datetimes on the event.
-      const dtQuery = userIdOpt ?
-        'SELECT dt.rowid AS id, dt.*, r.attend ' +
-        'FROM dateTimes dt ' +
-        `LEFT JOIN (SELECT * FROM rsvps WHERE participant = :userId) r ` +
-        'ON dt.rowid = r.dateTime ' +
-        'WHERE dt.event = :eventId' :
-        'SELECT rowid AS id, * FROM dateTimes WHERE event = :eventId';
-      const dtQueryOpts = {
-        ':eventId': eventId,
-        ':userId': userIdOpt
-      };
-      debug('getEvent dt', dtQuery, userIdOpt, dtQuery);
+      let dtQuery: string;
+      let dtQueryOpts: object;
+      if (userIdOpt) {
+        dtQuery =
+          'SELECT dt.rowid AS id, dt.*, r.attend ' +
+          'FROM dateTimes dt ' +
+          'LEFT JOIN (SELECT * FROM rsvps WHERE participant = :userId) r ' +
+          'ON dt.rowid = r.dateTime ' +
+          'WHERE dt.event = :eventId';
+        dtQueryOpts = {
+          ':eventId': eventId,
+          ':userId':  userIdOpt
+        };
+
+      } else {
+        dtQuery =
+          'SELECT rowid AS id, event, yyyymmdd, hhmm, duration FROM dateTimes WHERE event = :eventId';
+        dtQueryOpts = {
+          ':eventId': eventId
+        };
+      }
+      debug('getEvent dt', dtQuery, dtQueryOpts);
       event.dateTimes = await db.all(dtQuery, dtQueryOpts);
-      // TODO: clean up
       if (event.dateTime) {  // replace chosen dateTime id with the object
         event.dateTime = event.dateTimes.
           find((dt: DateTime) => dt.id === event.dateTime);
