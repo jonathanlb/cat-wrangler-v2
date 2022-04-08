@@ -1,9 +1,10 @@
 import Debug from 'debug';
 import sqlite3 from 'sqlite3';
 import { Database, open } from 'sqlite';
+import * as SqlString from 'sqlstring';
 
 const debug = Debug('rsvp:timekeeper');
-const error = Debug('rsvp:timekeeper:error');
+// const error = Debug('rsvp:timekeeper:error');
 
 export interface DateTime {
   attend?: number,
@@ -26,7 +27,7 @@ export interface Event {
 export interface ParticipantOptions {
   email?: string,
   id?: number,
-  organizer?: boolean,
+  organizer?: number,
   section?: string,
 }
 
@@ -38,31 +39,6 @@ export interface Venue {
   id: number,
   name: string,
   address: string
-}
-
-function simpleWhere(query: any): string {
-  if (!query) {
-    return '';
-  }
-
-  const entries = Object.entries(query);
-  if (!entries.length) {
-    return '';
-  }
-
-  return `WHERE ${entries.map((e) => {
-    const [key, arg] = e;
-    if (key === 'id' || key.endsWith('Id')) {
-      return `${key}=${parseInt(arg as string, 10)}`;
-    }
-
-    return `${key} LIKE '%${q(arg as string)}%'`;
-  }).
-    join(' AND ')}`;
-}
-
-function q(str: string): string {
-  return str.replace(/'/g, '\'\'');
 }
 
 export function validateYyyyMmDd(yyyymmdd: string): void {
@@ -95,7 +71,7 @@ export class TimeKeeper {
   /**
    * Set the date time for the event.
    */
-  async closeEvent(eventId: number, dateTimeId: number, cachedDb?: Database):
+  async closeEvent(db: Database, eventId: number, dateTimeId: number):
     Promise<void> {
     let query, queryOpts;
     if (dateTimeId > 0) {
@@ -111,19 +87,42 @@ export class TimeKeeper {
       };
     }
     debug('closeEvent', query, queryOpts);
-    const db = cachedDb || await this.openDb();
     await db.run(query, queryOpts);
-    if (!cachedDb) {
-      await db.close();
+  }
+
+  /**
+   * @return array of datetime, count, participant-id lists
+   */
+  async collectRsvps(db: Database, eventId: number, userId: number) {
+    const isAdminQuery = 'SELECT organizer FROM participants WHERE rowid=?';
+    debug('isAdmin', isAdminQuery, userId);
+    const isAdmin = await db.all(isAdminQuery, userId);
+    if (!isAdmin || !isAdmin.length || !isAdmin[0].organizer) {
+      return {};
     }
+
+    const query = 'SELECT dateTime, attend, participant FROM rsvps WHERE event=?';
+    debug('detail rsvps', query, eventId);
+    const response = await db.all(query, eventId);
+    debug('detail raw', response);
+    const result = {} as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    for (let i = 0; i < response.length; i++) {
+      const row = response[i];
+      const dtId = row.dateTime.toString();
+      if (!result[dtId]) {
+        result[dtId] = {};
+      }
+      result[dtId][row.participant.toString()] = row.attend;
+    }
+    debug('detail result', result);
+    return result;
   }
 
   /**
    * @return a promise to the unique new dateTime id.
    */
   async createDateTime(
-    event: number, yyyymmdd: string, hhmm: string, duration: string,
-    cachedDb?: Database):
+    db: Database, event: number, yyyymmdd: string, hhmm: string, duration: string):
     Promise<number> {
     validateYyyyMmDd(yyyymmdd);
     validateHhMm(hhmm);
@@ -132,61 +131,60 @@ export class TimeKeeper {
     const query =
       'INSERT INTO dateTimes(event, yyyymmdd, hhmm, duration) VALUES(:event, :yyyymmdd, :hhmm, :duration)';
     debug('createDateTime', query, event, yyyymmdd, hhmm, duration);
-    const db = cachedDb || await this.openDb();
     const result = await db.run(query, {
       ':event': event,
       ':yyyymmdd': yyyymmdd,
       ':hhmm': hhmm,
       ':duration': duration
     });
-    const lastId = result.lastID || 0;
-    if (lastId <= 0) {
+    const dateTimeId = result.lastID || 0;
+    if (dateTimeId <= 0) {
       throw new Error(`Unchecked error createDateTime: ${query} :${yyyymmdd} :${hhmm} :${duration}`);
     }
-    if (!cachedDb) {
-      db.close();
-    }
-    return lastId;
+
+    // RSVP negative for never dates
+    const neverQuery =
+      'INSERT INTO rsvps(event, participant, dateTime, attend, timestamp) ' +
+            `SELECT ${event}, nevers.participant, ${dateTimeId}, -1, ${ts} ` +
+            'FROM nevers WHERE yyyymmdd=?';
+            debug('createDateTime never', neverQuery, yyyymmdd);
+    await db.run(neverQuery, yyyymmdd);
+
+    return dateTimeId;
   }
 
   /**
    * @return a promise to the unique new event id.
    */
-  async createEvent(name: string, venue: number, description: string, cachedDb?: Database):
+  async createEvent(db: Database, name: string, venue: number, description: string):
     Promise<number> {
     const query =
       'INSERT INTO events(name, venue, description) VALUES(:name, :venue, :description)';
     debug('createEvent', query, name, venue, description);
-    const db = cachedDb || await this.openDb();
-    try {
-      const result = await db.run(query, {
-        ':name': name,
-        ':venue': venue,
-        ':description': description
-      });
-      const lastId = result.lastID || 0;
-      if (lastId <= 0) {
-        throw new Error(`Unchecked error createEvent: ${query} :${name} :${venue} :${description}`);
-      }
-      return lastId;
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
+    const result = await db.run(query, {
+      ':name': name,
+      ':venue': venue,
+      ':description': description
+    });
+    const lastId = result.lastID || 0;
+    if (lastId <= 0) {
+      throw new Error(`Unchecked error createEvent: ${query} :${name} :${venue} :${description}`);
     }
+    return lastId;
   }
 
   /**
    * @return a promise to the unique new participant id.
    */
-  async createParticipant(name: string, opts?: ParticipantOptions, cachedDb?: Database):
+  async createParticipant(db: Database, name: string, opts?: ParticipantOptions):
     Promise<number> {
     const query = opts ?.id ?
       'INSERT INTO participants(rowid, name, organizer, section, email) VALUES(:rowid, :name, :organizer, :section, :email)' :
       'INSERT INTO participants(name, organizer, section, email) VALUES(:name, :organizer, :section, :email)';
     const section = opts ?.section || '';
-    const organizer = opts ?.organizer || false;
+    const organizer = opts ?.organizer || 0;
     const email = opts ?.email || '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const queryValues: any = {
       ':name': name,
       ':organizer': organizer,
@@ -197,30 +195,22 @@ export class TimeKeeper {
       queryValues[':rowid'] = opts ?.id;
     }
     debug('createParticipant', query)
-    const db = cachedDb || await this.openDb();
-    try {
-      const result = await db.run(query, queryValues);
-      const lastId = result.lastID || 0;
-      if (lastId <= 0) {
-        throw new Error(`Unchecked error createParticipant: ${query} :${name} :${opts}`);
-      }
-      return lastId;
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
+    const result = await db.run(query, queryValues);
+    const lastId = result.lastID || 0;
+    if (lastId <= 0) {
+      throw new Error(`Unchecked error createParticipant: ${query} :${name} :${opts}`);
     }
+    return lastId;
   }
 
   /**
    * @return a promise to the unique new venue id.
    */
-  async createVenue(name: string, address: string, cachedDb?: Database):
+  async createVenue(db: Database, name: string, address: string):
     Promise<number> {
     const query =
       'INSERT INTO venues(name, address) VALUES(:name, :address)';
     debug('createVenue', query, name, address);
-    const db = cachedDb || await this.openDb();
     try {
       const result = await db.run(query, {
         ':name': name,
@@ -235,7 +225,7 @@ export class TimeKeeper {
       const err = _err as Error;
       if (err.message ===
         'SQLITE_CONSTRAINT: UNIQUE constraint failed: venues.name') {
-        const venue = await this.getVenueByName(name, db) as Venue;
+        const venue = await this.getVenueByName(db, name) as Venue;
         if (venue ?.address === address) {
           return venue.id;
         } else {
@@ -245,29 +235,18 @@ export class TimeKeeper {
       } else {
         throw err;
       }
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
     }
   }
 
   /**
     * @return a promise to dateTime info.
     */
-  async getDateTime(dateTimeId: number, cachedDb?: Database):
+  async getDateTime(db: Database, dateTimeId: number):
     Promise<DateTime | undefined> {
     const query = 'SELECT rowid AS id, event, yyyymmdd, hhmm, duration FROM dateTimes where id=?';
-    debug('getDateTime', query);
+    debug('getDateTime', query, dateTimeId);
 
-    const db = cachedDb || await this.openDb();
-    try {
-      return await db.get(query, dateTimeId);
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+    return await db.get(query, dateTimeId);
   }
 
   /**
@@ -276,77 +255,62 @@ export class TimeKeeper {
    * @param userIdOpt if specified, join the relevant rsvps to the
    *   associated datetimes.
    */
-  async getEvent(eventId: number, userIdOpt?: number, cachedDb?: Database):
+  async getEvent(db: Database, eventId: number, userIdOpt?: number):
     Promise<Event | undefined> {
     const eventQuery =
       'SELECT rowid AS id, name, description, venue, dateTime FROM events WHERE id=?';
     debug('getEvent', eventQuery);
 
-    const db = cachedDb || await this.openDb();
-    try {
-      const event = await db.get(eventQuery, eventId);
-      if (!event) {
-        return undefined;
-      }
-
-      // Put the datetimes on the event.
-      let dtQuery: string;
-      let dtQueryOpts: object;
-      if (userIdOpt) {
-        dtQuery =
-          'SELECT dt.rowid AS id, dt.*, r.attend ' +
-          'FROM dateTimes dt ' +
-          'LEFT JOIN (SELECT * FROM rsvps WHERE participant = :userId) r ' +
-          'ON dt.rowid = r.dateTime ' +
-          'WHERE dt.event = :eventId';
-        dtQueryOpts = {
-          ':eventId': eventId,
-          ':userId':  userIdOpt
-        };
-
-      } else {
-        dtQuery =
-          'SELECT rowid AS id, event, yyyymmdd, hhmm, duration FROM dateTimes WHERE event = :eventId';
-        dtQueryOpts = {
-          ':eventId': eventId
-        };
-      }
-      debug('getEvent dt', dtQuery, dtQueryOpts);
-      event.dateTimes = await db.all(dtQuery, dtQueryOpts);
-      if (event.dateTime) {  // replace chosen dateTime id with the object
-        event.dateTime = event.dateTimes.
-          find((dt: DateTime) => dt.id === event.dateTime);
-      } else {
-        event.dateTime = undefined;
-      }
-      return event;
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
+    const event = await db.get(eventQuery, eventId);
+    if (!event) {
+      return undefined;
     }
+
+    // Put the datetimes on the event.
+    let dtQuery: string;
+    let dtQueryOpts: object;
+    if (userIdOpt) {
+      dtQuery =
+        'SELECT dt.rowid AS id, dt.*, r.attend ' +
+        'FROM dateTimes dt ' +
+        'LEFT JOIN (SELECT * FROM rsvps WHERE participant = :userId) r ' +
+        'ON dt.rowid = r.dateTime ' +
+        'WHERE dt.event = :eventId';
+      dtQueryOpts = {
+        ':eventId': eventId,
+        ':userId': userIdOpt
+      };
+
+    } else {
+      dtQuery =
+        'SELECT rowid AS id, event, yyyymmdd, hhmm, duration FROM dateTimes WHERE event = :eventId';
+      dtQueryOpts = {
+        ':eventId': eventId
+      };
+    }
+    debug('getEvent dt', dtQuery, dtQueryOpts);
+    event.dateTimes = await db.all(dtQuery, dtQueryOpts);
+    if (event.dateTime) {  // replace chosen dateTime id with the object
+      event.dateTime = event.dateTimes.
+        find((dt: DateTime) => dt.id === event.dateTime);
+    } else {
+      event.dateTime = undefined;
+    }
+    return event;
   }
 
   /**
-   * @param opts venue-query
    * @return promise an array of event ids.
    */
-  async getEvents(opts: string, cachedDb?: Database):
+  async getEvents(db: Database):
     Promise<Array<number>> {
-    const query = `SELECT rowid AS id FROM events ${simpleWhere(opts)}`;
+    const query = 'SELECT rowid AS id FROM events';
     debug('getEvents', query);
-    const db = cachedDb || await this.openDb();
-    try {
-      return db.all(query).
-        then((result) => result.map((x) => x.id));
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+    return db.all(query).
+      then((result) => result.map((x) => x.id));
   }
 
-  async getNevers(participantId: number, sinceOpt?: string, cachedDb?: Database):
+  async getNevers(db: Database, participantId: number, sinceOpt?: string):
     Promise<Array<string>> {
     let since;
     if (sinceOpt) {
@@ -355,24 +319,17 @@ export class TimeKeeper {
       since = '';
     }
 
-    const query = 'SELECT * FROM nevers ' +
-      `WHERE participant=${participantId}${since}`;
+    const query = SqlString.format('SELECT * FROM nevers ' +
+      `WHERE participant=${participantId}${since}`);
     debug('getNevers', query);
-    const db = cachedDb || await this.openDb();
-    try {
-      return db.all(query).
-        then((result) => result.map((row) => row.yyyymmdd));
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+    return db.all(query).
+      then((result) => result.map((row) => row.yyyymmdd));
   }
 
   /**
    * @return a promise to a map of datetimes to responses.
    */
-  async getRsvps(eventId: number, userId: number, cachedDb?: Database):
+  async getRsvps(db: Database, eventId: number, userId: number):
     Promise<Map<number, number>> {
 
     const query = 'SELECT datetime, attend FROM rsvps ' +
@@ -383,117 +340,69 @@ export class TimeKeeper {
     };
     debug('getRsvps', eventId, userId);
 
-    const db = cachedDb || await this.openDb();
-    try {
-      return db.all(query, queryOpts).
-        then((result) => result.reduce(
-          (accum, x) => {
-            accum[x.dateTime] = x.attend; // eslint-disable-line
-            return accum;
-          },
-          {},
-        ));
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+    return db.all(query, queryOpts).
+      then((result) => result.reduce(
+        (accum, x) => {
+          accum[x.dateTime] = x.attend; // eslint-disable-line
+          return accum;
+        },
+        {},
+      ));
   }
 
   /**
    * @return promise to id.
    */
-  async getUserId(userName: string, cachedDb?: Database): Promise<number> {
-    const query = `SELECT rowid FROM participants WHERE name = '${q(userName)}'`;
+  async getUserId(db: Database, userName: string): Promise<number> {
+    const query = 'SELECT rowid FROM participants WHERE name = ?';
     debug('getUserId', query);
-
-    const db = cachedDb || await this.openDb();
-    try {
-      return db.all(query).
-        then((result) => {
-          if (!result.length) {
-            return -1;
-          }
-          return result[0].rowid;
-        });
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
+    const result = await db.get(query, userName);
+    if (!result) {
+      return -1;
+    } else {
+      return result.rowid;
     }
   }
 
   /**
    * @return promise to id.
    */
-  async getUserIdByEmail(email: string, cachedDb?: Database): Promise<number> {
-    const query = `SELECT rowid FROM participants WHERE email = '${q(email.trim())}'`;
+  async getUserIdByEmail(db: Database, email: string): Promise<number> {
+    const query = SqlString.format('SELECT rowid FROM participants WHERE email = ?', [email.trim()]);
     debug('getUserIdByEmail', query);
-
-    const db = cachedDb || await this.openDb();
-    try {
-      return db.all(query).
-        then((result) => {
-          if (!result.length) {
-            return -1;
-          }
-          return result[0].rowid;
-        });
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
+    const result = await db.get(query);
+    if (!result) {
+      return -1;
+    } else {
+      return result.rowid;
     }
   }
 
   /**
    * @return promise to info.
    */
-  async getUserInfo(userId: number, cachedDb?: Database): Promise<ParticipantOptions | undefined> {
-    const query = `SELECT rowid as id, name, section, organizer, email FROM participants WHERE id = ${userId}`;
-    debug('getUserInfo', query);
-
-    const db = cachedDb || await this.openDb();
-    try {
-      return db.all(query).
-        then((result: Array<ParticipantOptions>) => {
-          if (!result.length) {
-            return undefined;
-          }
-          return result[0];
-        });
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+  async getUserInfo(db: Database, userId: number): Promise<ParticipantOptions | undefined> {
+    const query = 'SELECT rowid as id, name, section, organizer, email FROM participants WHERE id = ?';
+    debug('getUserInfo', query, userId);
+    return await db.get(query, userId);
   }
 
   /**
    * @return a promise to a key-value lookup.
    */
-  async getValue(userId: number, key: string, cachedDb?: Database): Promise<string | number> {
-    const query = `SELECT value FROM key_value WHERE key='${q(key)}'`;
-    debug('getValue', query);
-    const db = cachedDb || await this.openDb();
-    try {
-      const [result] = await db.all(query);
-      return result && result.value;
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+  async getValue(db: Database, userId: number, key: string): Promise<string | number> {
+    const query = SqlString.format(
+      'SELECT value FROM key_value WHERE key = ?', [key]);
+    debug('getValue', query, key);
+    const [result] = await db.all(query);
+    return result && result.value;
   }
 
-  async getVenueByName(name: string, cachedDb?: Database): Promise<Venue | undefined> {
-    const query = 'SELECT rowid, address FROM venues WHERE name=?';
-    debug('getVenueByName', query, name);
-    const db = cachedDb || await this.openDb();
-    const result = await db.get(query, name);
-    if (!cachedDb) {
-      await db.close();
-    }
+  async getVenueByName(db: Database, name: string): Promise<Venue | undefined> {
+    const query = SqlString.format(
+      'SELECT rowid, address FROM venues WHERE name=?', [name]);
+    debug('getVenueByName', query);
+    const result = await db.get(query);
     if (result) {
       return {
         id: result.rowid,
@@ -503,28 +412,26 @@ export class TimeKeeper {
     }
   }
 
-  async never(participantId: number, dateStr: string, cachedDb?: Database): Promise<void> {
+  async never(db: Database, participantId: number, dateStr: string): Promise<void> {
     const ts = new Date().getTime();
-    const neverQuery = 'INSERT OR IGNORE INTO nevers(' +
+    const neverQuery = SqlString.format(
+      'INSERT OR IGNORE INTO nevers(' +
       'participant, yyyymmdd) VALUES' +
-      `(${participantId}, '${dateStr}')`;
+      `(${participantId}, '${dateStr}')`);
 
-    const coincidentDts =
+    const coincidentDts = SqlString.format(
       `SELECT event, rowid as dateTime, ${participantId} AS participant, -1, ${ts} AS timestamp
         FROM dateTimes
-        WHERE yyyymmdd='${dateStr}'`;
+        WHERE yyyymmdd=?`,
+      [dateStr]);
     const updateDTQuery =
       `INSERT OR REPLACE INTO rsvps(event, dateTime, participant, attend, timestamp)
         ${coincidentDts}`;
 
     debug('never', neverQuery);
-    const db = cachedDb || await this.openDb();
     await db.run(neverQuery);
     debug('never update', updateDTQuery);
     db.run(updateDTQuery);
-    if (!cachedDb) {
-      await db.close();
-    }
   }
 
   async openDb(): Promise<Database> {
@@ -537,7 +444,7 @@ export class TimeKeeper {
   /**
      * @return promise to unique response id.
      */
-  async rsvp(eventId: number, participantId: number, dateTimeId: number, attend: number, cachedDb: Database):
+  async rsvp(db: Database, eventId: number, participantId: number, dateTimeId: number, attend: number):
     Promise<number> {
     const innerJoinId = '(SELECT rowid FROM rsvps WHERE ' +
       'event=:eventId AND participant=:participantId ' +
@@ -554,16 +461,9 @@ export class TimeKeeper {
       ':ts': ts
     };
     debug('rsvp', query);
-    const db = cachedDb || await this.openDb();
-    try {
-      const result = await db.run(query, queryOpts);
-      const lastId = result.lastID || 0;
-      return lastId;
-    } finally {
-      if (!cachedDb) {
-        await db.close();
-      }
-    }
+    const result = await db.run(query, queryOpts);
+    const lastId = result.lastID || 0;
+    return lastId;
   }
 
   /**
@@ -602,5 +502,56 @@ export class TimeKeeper {
       await db.exec(s);
     });
     return db;
+  }
+
+  /**
+   * Return a map of datetime ids to response to counts.
+   * Set the default response to 0 if idOpt is set.
+   */
+  async summarizeRsvps(db: Database, eventId: number, idOpt: number) {
+    if (idOpt > 0) {
+      const ts = new Date().getTime();
+      const innerJoin =
+        `SELECT rowid AS dateTime, ${eventId} AS event,
+          ${idOpt} AS participant, 0 AS attend, ${ts} AS timestamp
+          FROM dateTimes WHERE event=${eventId}`;
+      const setDefault =
+        `INSERT OR IGNORE INTO rsvps
+          (dateTime, event, participant, attend, timestamp)
+          ${innerJoin}`;
+      debug('summarize, set defaults', setDefault);
+      await db.all(setDefault);
+    }
+
+    const query = 'SELECT dateTime, attend, COUNT(rowid) AS count FROM rsvps ' +
+      `WHERE event=${eventId} GROUP BY dateTime, attend`;
+    debug('summarize rsvps', query);
+    const response = await db.all(query);
+    const result = {} as any;  // eslint-disable-line @typescript-eslint/no-explicit-any
+    for (let i = 0; i < response.length; i++) {
+      const row = response[i] as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      const dtId = row.dateTime.toString();
+      if (!result[dtId]) {
+        result[dtId] = {};
+      }
+      result[dtId][row.attend.toString()] = row.count;
+    }
+    return result;
+  }
+
+  async updateUserSection(db: Database, userId: number, newSection: string): Promise<string> {
+    const lcSection = newSection.toLowerCase();
+    const getSectionsQuery = 'SELECT name FROM sections';
+    debug('updateUserSection', getSectionsQuery);
+    const sections = await db.all(getSectionsQuery);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (sections && sections.find((x: any) => x.name === lcSection)) {
+      const updateQuery = 'UPDATE participants SET section=? WHERE rowid=?';
+      debug('updateUserSection', updateQuery);
+      await db.exec(updateQuery, [lcSection, userId]);
+      return lcSection;
+    }
+    const info = await this.getUserInfo(db, userId);
+    return info ?.section || '';
   }
 }
