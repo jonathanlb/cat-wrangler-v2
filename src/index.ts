@@ -10,6 +10,8 @@ import tls from 'tls';
 
 import { Request as ExReq, Response as ExRes } from 'express';
 
+import { Server } from './server';
+
 const debug = Debug('rsvp:index');
 
 debug('reading env');
@@ -38,6 +40,11 @@ router.get('/', (req, res) => {
   debug('/ request', req.url);
   res.send('Hello!');
 });
+
+const server = new Server({ router });
+server.setupAlive().
+  setupDatetimeGet().
+  setupUserGet();
 
 const port: number = parseInt(
   getEnv('PORT', true) as string, 10);
