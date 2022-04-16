@@ -41,6 +41,11 @@ export interface Venue {
   address: string
 }
 
+export interface VenueOptions {
+  id?: number,
+  name?: string,
+}
+
 export function validateYyyyMmDd(yyyymmdd: string): void {
   if (!yyyymmdd.match(/^[0-9]{4}[/-][0-9]{1,2}[/-][0-9]{1,2}$/)) {
     throw new Error(`yyyymmdd validation: ${yyyymmdd}`);
@@ -390,7 +395,7 @@ export class TimeKeeper {
   /**
    * @return a promise to a key-value lookup.
    */
-  async getValue(db: Database, userId: number, key: string): Promise<string | number> {
+  async getValue(db: Database, key: string): Promise<string | number> {
     const query = SqlString.format(
       'SELECT value FROM key_value WHERE key = ?', [key]);
     debug('getValue', query, key);
@@ -410,6 +415,14 @@ export class TimeKeeper {
         address: result.address
       };
     }
+  }
+
+  async getVenues(db: Database, queryOpts: VenueOptions): Promise<Array<Venue>> {
+    let query =  'SELECT rowid AS id, * FROM venues';
+    if (queryOpts.id) {
+      query = `SELECT rowid AS id, * FROM venues WHERE rowid=${queryOpts.id}`;
+    }
+    return db.all(query);
   }
 
   async never(db: Database, participantId: number, dateStr: string): Promise<void> {

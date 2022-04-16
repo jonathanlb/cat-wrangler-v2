@@ -1,5 +1,6 @@
 .env
 config/*.pem
 coverage/*
+data/*sqlite
 dist/*
 node_modules/*

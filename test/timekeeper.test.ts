@@ -519,7 +519,7 @@ describe('Sqlite server tests', () => {
   test('Handles missing keys', async () => {
     const tk = newTimeKeeper();
     const db = await tk.setup();
-    expect(await tk.getValue(db, 1, 'foo')).not.toBeDefined();
+    expect(await tk.getValue(db, 'foo')).not.toBeDefined();
     await db.close();
   });
 
@@ -529,7 +529,7 @@ describe('Sqlite server tests', () => {
     await db.run(
       'INSERT INTO key_value(key, value) VALUES (\'foo\', \'bar\')',
     );
-    expect(await tk.getValue(db, 1, 'foo')).toEqual('bar');
+    expect(await tk.getValue(db, 'foo')).toEqual('bar');
     await db.close();
   });
 

@@ -11,6 +11,7 @@ import tls from 'tls';
 import { Request as ExReq, Response as ExRes } from 'express';
 
 import { Server } from './server';
+import { TimeKeeper } from './timekeeper';
 
 const debug = Debug('rsvp:index');
 
@@ -28,23 +29,30 @@ app.use(helmet());
 app.use(express.json());
 
 const router = express.Router();
-
-useCors(app);
-if (getEnv('NO_AUTH')) {
-  useCognito(app);
-}
-app.use('/', router);
-
-// TODO: configure routes here
-router.get('/', (req, res) => {
-  debug('/ request', req.url);
-  res.send('Hello!');
+const timekeeper = new TimeKeeper({
+  dbFilename: 'data/rsvps.sqlite'
+});
+timekeeper.setup(); // XXX need to wait for setup before serving...
+const server = new Server({ 
+  router,
+  timekeeper
 });
 
-const server = new Server({ router });
-server.setupAlive().
-  setupDatetimeGet().
-  setupUserGet();
+useCors(app);
+server.setupAlive();
+
+useCognito(app);
+app.use('/', router);
+
+server.setupDatetimeGet().
+  setupEventGet().
+  setupEventSummary().
+  setupKeyRetrieval().
+  setupNevers().
+  setupUpdateSection().
+  setupRsvp().
+  setupUserGet().
+  setupVenueGet();
 
 const port: number = parseInt(
   getEnv('PORT', true) as string, 10);
@@ -122,7 +130,7 @@ function useCognito(app: express.Application) {
       }
     });
   } else {
-    debug('missing Cognito config, check env variables');
+    console.warn('missing Cognito config, check env variables');
   }
 }
 
