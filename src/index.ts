@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import helmet from 'helmet';
 import https from 'https';
 import rateLimit from 'express-rate-limit';
+import { Database } from 'sqlite';
 import tls from 'tls';
 
 import { Request as ExReq, Response as ExRes } from 'express';
@@ -32,7 +33,9 @@ const router = express.Router();
 const timekeeper = new TimeKeeper({
   dbFilename: 'data/rsvps.sqlite'
 });
-timekeeper.setup(); // XXX need to wait for setup before serving...
+let db = {} as Database;
+timekeeper.setup().
+  then(x => db = x); // XXX need to wait for setup before serving...
 const server = new Server({ 
   router,
   timekeeper
@@ -120,12 +123,19 @@ function useCognito(app: express.Application) {
           return res.status(401).send('Access Token missing from header');
         }
 
-        debug('validating', accessTokenFromClient);
+        debug('cognito validating');
         cognito.validate(
           accessTokenFromClient,
-          function (err: Error, response: Response) {
+          async function (err: Error, response: Response) {
             if (err) return res.status(401).send(err);
-            else next();
+            else {
+              // decode token
+              jwt.decode(accessTokenFromClient);
+              // check expiry
+              // pass along email, name, and user-id
+              const id = await timekeeper.getUserIdByEmail(db, email);
+              next();
+            }
           });
       }
     });
