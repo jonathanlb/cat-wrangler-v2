@@ -2,5 +2,6 @@
 config/*.pem
 coverage/*
 data/*sqlite
+data/*sqlite3
 dist/*
 node_modules/*

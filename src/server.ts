@@ -68,7 +68,7 @@ export class Server {
     this.router.get(
       '/event/list',
       async (req: express.Request, res: express.Response) => {
-        debug('event/list request', req);
+        debug('event/list request', req.headers);
         this.openDb(async (db: Database) => {
           try {
             const result = await this.timekeeper.getEvents(db);

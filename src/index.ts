@@ -3,6 +3,7 @@ import Debug from 'debug';
 import express from 'express';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
+import * as jwt from 'jsonwebtoken';
 import helmet from 'helmet';
 import https from 'https';
 import rateLimit from 'express-rate-limit';
@@ -129,11 +130,11 @@ function useCognito(app: express.Application) {
           async function (err: Error, response: Response) {
             if (err) return res.status(401).send(err);
             else {
-              // decode token
-              jwt.decode(accessTokenFromClient);
-              // check expiry
-              // pass along email, name, and user-id
+              const { email } = jwt.decode(accessTokenFromClient) as jwt.JwtPayload;
+              // XXX TODO check expiry
               const id = await timekeeper.getUserIdByEmail(db, email);
+              req.headers['x-email'] = email;
+              req.headers['x-userid'] = id.toString();
               next();
             }
           });
