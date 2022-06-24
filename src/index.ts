@@ -1,4 +1,5 @@
-import CognitoExpress from 'cognito-express';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
+import { CognitoAccessTokenPayload } from 'aws-jwt-verify/jwt-model';
 import Debug from 'debug';
 import express from 'express';
 import * as dotenv from 'dotenv';
@@ -16,6 +17,7 @@ import { Server } from './server';
 import { TimeKeeper } from './timekeeper';
 
 const debug = Debug('rsvp:index');
+const errors = Debug('rsvp:index:error');
 
 debug('reading env');
 dotenv.config();
@@ -103,14 +105,14 @@ function getEnv(envVar: string, noThrow?: boolean): string | undefined {
 function useCognito(app: express.Application) {
   const region = getEnv('AWS_REGION', true);
   const poolId = getEnv('AWS_USER_POOL_ID', true);
+  const clientId = getEnv('AWS_CLIENT_ID', true);
 
   if (region && poolId) {
-    const cognito = new CognitoExpress({
-      region: region,
-      cognitoUserPoolId: poolId,
-      tokenUse: 'id', // tag sent by front-end auth from login
-      tokenExpiration: 3600000*24*90
-    });
+    const verifier = CognitoJwtVerifier.create({
+      userPoolId: poolId,
+      tokenUse: 'id',
+      clientId: clientId,
+    }) as any; // cannot find type with single argument .verify() method...
 
     debug('wiring cognito');
     app.use((req: ExReq, res: ExRes, next: express.NextFunction) => {
@@ -121,22 +123,32 @@ function useCognito(app: express.Application) {
         const accessTokenFromClient =
           req.headers['authorization']?.replace(/^[Bb]earer\s+/, '');
         if (!accessTokenFromClient) {
-          return res.status(401).send('Access Token missing from header');
+          return res.status(401).send('Access Token expired');
         }
 
         debug('cognito validating');
-        cognito.validate(
-          accessTokenFromClient,
-          async function (err: Error, response: Response) {
-            if (err) return res.status(401).send(err);
-            else {
-              const { email } = jwt.decode(accessTokenFromClient) as jwt.JwtPayload;
-              // XXX TODO check expiry
-              const id = await timekeeper.getUserIdByEmail(db, email);
-              req.headers['x-email'] = email;
-              req.headers['x-userid'] = id.toString();
-              next();
+        const now_s = new Date().getTime() / 1000;
+        verifier.verify(accessTokenFromClient).
+          then(async (payload: CognitoAccessTokenPayload) => {
+            debug('payload');
+            const { email, exp } = jwt.decode(accessTokenFromClient) as jwt.JwtPayload;
+            if ((exp || 0) < now_s) {
+              const err = 'expired id token';
+              debug(err);
+              return res.status(401).send(err);
             }
+            const id = await timekeeper.getUserIdByEmail(db, email);
+            if (id < 0) {
+              const err = 'invalid user id';
+              errors(err);
+              return res.status(401).send(err);
+            }
+            req.headers['x-email'] = email;
+            req.headers['x-userid'] = id.toString();
+            next();
+          }).catch((err: Error) => {
+            debug('invalid JWT token', err);
+            return res.status(401).send(err);
           });
       }
     });

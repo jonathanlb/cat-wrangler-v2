@@ -14,7 +14,7 @@
   "license": "MIT",
   "dependencies": {
     "@babel/preset-typescript": "^7.16.7",
-    "cognito-express": "^3.0.1",
+    "aws-jwt-verify": "^3.1.0",
     "debug": "^4.3.3",
     "dotenv": "^16.0.0",
     "express": "^4.17.3",

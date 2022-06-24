@@ -45,11 +45,11 @@ export class Server {
 
   setupDatetimeGet(): Server {
     this.router.get(
-      '/datetime/get/:userId/:dateTimeId',
+      '/datetime/get/:dateTimeId',
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.params.userId, 10);
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
             const dateTimeId = parseInt(req.params.dateTimeId, 10);
             debug('datetime get', userId);
             const result = await this.timekeeper.getDateTime(db, dateTimeId);
@@ -68,7 +68,7 @@ export class Server {
     this.router.get(
       '/event/list',
       async (req: express.Request, res: express.Response) => {
-        debug('event/list request', req.headers);
+        debug('event/list request', req.headers['x-email']);
         this.openDb(async (db: Database) => {
           try {
             const result = await this.timekeeper.getEvents(db);
@@ -81,11 +81,11 @@ export class Server {
       });
 
     this.router.get(
-      '/event/get/:userId/:eventId',
+      '/event/get/:eventId', // XXX duplicate name, request detail here
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.params.userId, 10);
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
             const eventId = parseInt(req.params.eventId, 10);
             const result = await this.timekeeper.getEvent(db, eventId, userId);
             res.status(200).send(JSON.stringify(result));
@@ -97,7 +97,7 @@ export class Server {
       });
 
     this.router.get(
-      '/event/get/:eventId',
+      '/event/get/:eventId', // XXX duplicate name, no detail here
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
@@ -118,11 +118,11 @@ export class Server {
 
   setupEventSummary(): Server {
     this.router.get(
-      '/event/summary/:userId/:eventId',
+      '/event/summary/:eventId',
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.params.userId, 10);
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
             const eventId = parseInt(req.params.eventId, 10);
             const rsvps = await this.timekeeper.summarizeRsvps(
               db, eventId, userId);
@@ -136,11 +136,11 @@ export class Server {
 
 
     this.router.get(
-      '/event/detail/:userId/:eventId',
+      '/event/detail/:eventId',
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.params.userId, 10);
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
             const eventId = parseInt(req.params.eventId, 10);
             const rsvps = await this.timekeeper.collectRsvps(
               db, eventId, userId);
@@ -180,12 +180,12 @@ export class Server {
 
   setupNevers(): Server {
     this.router.get(
-      '/event/never/:userId/:dateStr',
+      '/event/never/:dateStr',
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
             const { dateStr } = req.params;
-            const userId = parseInt(req.params.userId, 10);
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
             debug('never', userId, dateStr);
             await this.timekeeper.never(db, userId, dateStr);
             res.status(200).send('OK');
@@ -197,11 +197,11 @@ export class Server {
       });
 
       this.router.get(
-        '/event/never/:userId',
+        '/event/never',
         async (req: express.Request, res: express.Response) => {
           this.openDb(async (db: Database) => {
             try {
-              const userId = parseInt(req.params.userId, 10);
+              const userId = parseInt(req.headers['x-userid'] as string, 10);
               const todayStr = new Date().toISOString().split('T')[0];
               debug('nevers', userId, todayStr);
               const nevers = await this.timekeeper.getNevers(
@@ -219,11 +219,11 @@ export class Server {
 
   setupRsvp(): Server {
     this.router.get(
-      '/event/rsvp/:userId/:eventId/:dateTimeId/:rsvp',
+      '/event/rsvp/:eventId/:dateTimeId/:rsvp', // XXX do we need eventId?
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.params.userId, 10);
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
             const eventId = parseInt(req.params.eventId, 10);
             const dateTimeId = parseInt(req.params.dateTimeId, 10);
             const rsvp = parseInt(req.params.rsvp, 10);
@@ -239,11 +239,11 @@ export class Server {
       });
 
       this.router.get(
-        '/event/rsvp/:userId/:eventId',
+        '/event/rsvp/:eventId',
         async (req: express.Request, res: express.Response) => {
           this.openDb(async (db: Database) => {
             try {
-              const userId = parseInt(req.params.userId, 10);
+              const userId = parseInt(req.headers['x-userid'] as string, 10);
               const eventId = parseInt(req.params.eventId, 10);
               debug('get-rsvp', userId, eventId);
               const result = await this.timekeeper.getRsvps(
@@ -260,11 +260,11 @@ export class Server {
 
   setupUpdateSection(): Server {
     this.router.get(
-      '/user/update-section/:userId/:newSection',
+      '/user/update-section/:newSection',
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           const { newSection } = req.params;
-          const userId = parseInt(req.params.userId, 10);
+          const userId = parseInt(req.headers['x-userid'] as string, 10);
           debug('update-section', userId, newSection);
           const updatedSection = await this.timekeeper.updateUserSection(
             db, userId, newSection);
@@ -329,8 +329,9 @@ export class Server {
               db, { id: venueId });
             if (result && result.length) {
               res.status(200).send(JSON.stringify(result[0]));
+            } else {
+              res.status(404).send(`venue ${venueId} not found`);
             }
-            res.status(404).send(`venue ${venueId} not found`);
           } catch (err) {
             errors('venue get', err);
             res.status(500).send('get venue failure');
