@@ -279,11 +279,11 @@ export class Server {
     this.router.get(
       '/user/get/:userId',
       async (req: express.Request, res: express.Response) => {
+        const userId = parseInt(req.params.userId, 10);
+        debug('get user info', userId);
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.params.userId, 10);
-            debug('get user info', userId);
-            const info = this.timekeeper.getUserInfo(db, userId);
+            const info = await this.timekeeper.getUserInfo(db, userId);
             res.status(200).send(JSON.stringify(info));
           } catch (err) {
             errors('get user info', err);
