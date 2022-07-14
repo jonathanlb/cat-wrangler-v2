@@ -64,7 +64,7 @@ const port: number = parseInt(
   getEnv('PORT', true) as string, 10);
 if (port && !isNaN(port)) {
   debug('using http port', port);
-  const server = app.listen(port, () => {
+  app.listen(port, () => {
     debug('serving http on port', port);
   });
 }
@@ -112,7 +112,8 @@ function useCognito(app: express.Application) {
       userPoolId: poolId,
       tokenUse: 'id',
       clientId: clientId,
-    }) as any; // cannot find type with single argument .verify() method...
+    }) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // cannot find type with single argument .verify() method...
 
     debug('wiring cognito');
     app.use((req: ExReq, res: ExRes, next: express.NextFunction) => {
@@ -130,7 +131,7 @@ function useCognito(app: express.Application) {
         const now_s = new Date().getTime() / 1000;
         verifier.verify(accessTokenFromClient).
           then(async (payload: CognitoAccessTokenPayload) => {
-            debug('payload');
+            debug('payload', payload);
             const { email, exp } = jwt.decode(accessTokenFromClient) as jwt.JwtPayload;
             if ((exp || 0) < now_s) {
               const err = 'expired id token';

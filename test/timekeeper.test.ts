@@ -182,6 +182,36 @@ describe('Sqlite server tests', () => {
     await db.close();
   });
 
+  test('Lists events', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const vid = 17;
+    const eid0 = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
+    await tk.createDateTime(db, eid0, '2022-03-23', '16:31', '5m');
+
+    const eid1 = await tk.createEvent(db, 'Another Hula Contest', vid, 'Keep going!');
+    await tk.createDateTime(db, eid1, '2022-05-23', '16:36', '5m');
+
+    const eids = await tk.getEvents(db);
+    expect(eids.sort()).toEqual([eid0, eid1]);
+    await db.close();
+  });
+
+  test('Lists events after a date', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const vid = 17;
+    const eid0 = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
+    await tk.createDateTime(db, eid0, '2022-03-23', '16:31', '5m');
+
+    const eid1 = await tk.createEvent(db, 'Another Hula Contest', vid, 'Keep going!');
+    await tk.createDateTime(db, eid1, '2022-05-23', '16:36', '5m');
+
+    const eids = await tk.getEventsAfter(db, '2022-05-23');
+    expect(eids.sort()).toEqual([eid1]);
+    await db.close();
+  });
+
   test('Retrieves rsvps', async () => {
     const tk = newTimeKeeper();
     const db = await tk.setup();

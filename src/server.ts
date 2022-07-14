@@ -2,7 +2,7 @@ import Debug from 'debug';
 import * as express from 'express';
 import { Database } from 'sqlite';
 
-import { TimeKeeper } from './timekeeper';
+import { TimeKeeper, validateYyyyMmDd } from './timekeeper';
 
 const debug = Debug('rsvp:server');
 const errors = Debug('rsvp:server:error');
@@ -81,7 +81,23 @@ export class Server {
       });
 
     this.router.get(
-      '/event/get/:eventId', // XXX duplicate name, request detail here
+      '/event/listafter/:yyyymmdd',
+      async (req: express.Request, res: express.Response) => {
+        debug('event/list after request', req.headers['x-email']);
+        const yyyymmdd = validateYyyyMmDd(req.params.yyyymmdd);
+        this.openDb(async (db: Database) => {
+          try {
+            const result = await this.timekeeper.getEventsAfter(db, yyyymmdd);
+            res.status(200).send(JSON.stringify(result));
+          } catch (err) {
+            errors('event list', err);
+            res.status(500).send('event list error');
+          }
+        });
+      });
+
+    this.router.get(
+      '/event/get/:eventId',
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
@@ -95,23 +111,6 @@ export class Server {
           }
         });
       });
-
-    this.router.get(
-      '/event/get/:eventId', // XXX duplicate name, no detail here
-      async (req: express.Request, res: express.Response) => {
-        this.openDb(async (db: Database) => {
-          try {
-            const eventId = parseInt(req.params.eventId, 10);
-            const result = await this.timekeeper.getEvent(db, eventId);
-            res.status(200).send(JSON.stringify(result));
-          } catch (err) {
-            errors('event get', err);
-            res.status(500).send('event list error');
-          }
-        });
-      });
-
-    // TODO ? allow query?
 
     return this;
   }

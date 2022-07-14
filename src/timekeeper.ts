@@ -46,22 +46,25 @@ export interface VenueOptions {
   name?: string,
 }
 
-export function validateYyyyMmDd(yyyymmdd: string): void {
+export function validateYyyyMmDd(yyyymmdd: string): string {
   if (!yyyymmdd.match(/^[0-9]{4}[/-][0-9]{1,2}[/-][0-9]{1,2}$/)) {
     throw new Error(`yyyymmdd validation: ${yyyymmdd}`);
   }
+  return yyyymmdd;
 }
 
-export function validateHhMm(hhmm: string): void {
+export function validateHhMm(hhmm: string): string {
   if (!hhmm.match(/^[0-9]{1,2}:[0-9]{2}$/)) {
     throw new Error(`hhmm validation: ${hhmm}`);
   }
+  return hhmm;
 }
 
-export function validateDuration(duration: string): void {
+export function validateDuration(duration: string): string {
   if (!duration.match(/^[0-9]+m$/)) {
     throw new Error(`duration validation: ${duration}`);
   }
+  return duration;
 }
 
 export class TimeKeeper {
@@ -312,6 +315,17 @@ export class TimeKeeper {
     const query = 'SELECT rowid AS id FROM events';
     debug('getEvents', query);
     return db.all(query).
+      then((result) => result.map((x) => x.id));
+  }
+
+  /**
+   * @return promise an array of event ids with possible dateTimes at least (inclusive) yyyymmdd.
+   */
+  async getEventsAfter(db: Database, yyyymmdd: string):
+    Promise<Array<number>> {
+    const query = 'SELECT DISTICT e.rowid AS id FROM events as e, dateTimes as dt where dt.yyyymmdd >= ? and dt.event = e.rowid';
+    debug('getEvents', query, yyyymmdd);
+    return db.all(query, yyyymmdd).
       then((result) => result.map((x) => x.id));
   }
 
