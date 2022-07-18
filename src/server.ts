@@ -2,7 +2,7 @@ import Debug from 'debug';
 import * as express from 'express';
 import { Database } from 'sqlite';
 
-import { TimeKeeper, validateYyyyMmDd } from './timekeeper';
+import { TimeKeeper, validateYyyyMmDdOptDash } from './timekeeper';
 
 const debug = Debug('rsvp:server');
 const errors = Debug('rsvp:server:error');
@@ -84,7 +84,15 @@ export class Server {
       '/event/listafter/:yyyymmdd',
       async (req: express.Request, res: express.Response) => {
         debug('event/list after request', req.headers['x-email']);
-        const yyyymmdd = validateYyyyMmDd(req.params.yyyymmdd);
+        let yyyymmdd = '';
+        try {
+          yyyymmdd = validateYyyyMmDdOptDash(req.params.yyyymmdd);
+        } catch (e) {
+          errors('event list invalid date', req.params.yyyymmdd);
+          res.status(422).send('invalid date');
+          return;
+        }
+
         this.openDb(async (db: Database) => {
           try {
             const result = await this.timekeeper.getEventsAfter(db, yyyymmdd);

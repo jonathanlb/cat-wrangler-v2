@@ -46,16 +46,24 @@ export interface VenueOptions {
   name?: string,
 }
 
+export function validateYyyyMmDdOptDash(yyyymmdd: string): string {
+  const m = yyyymmdd.match(/^([0-9]{4})[/-]?([0-9]{2})[/-]?([0-9]{2})$/);
+  if (!m || m?.length != 4) {
+    throw new Error(`yyyy-mm-dd validation: ${yyyymmdd}`);
+  }
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
 export function validateYyyyMmDd(yyyymmdd: string): string {
   if (!yyyymmdd.match(/^[0-9]{4}[/-][0-9]{1,2}[/-][0-9]{1,2}$/)) {
-    throw new Error(`yyyymmdd validation: ${yyyymmdd}`);
+    throw new Error(`yyyy-mm-dd validation: ${yyyymmdd}`);
   }
   return yyyymmdd;
 }
 
 export function validateHhMm(hhmm: string): string {
   if (!hhmm.match(/^[0-9]{1,2}:[0-9]{2}$/)) {
-    throw new Error(`hhmm validation: ${hhmm}`);
+    throw new Error(`hh:mm validation: ${hhmm}`);
   }
   return hhmm;
 }
@@ -323,7 +331,7 @@ export class TimeKeeper {
    */
   async getEventsAfter(db: Database, yyyymmdd: string):
     Promise<Array<number>> {
-    const query = 'SELECT DISTICT e.rowid AS id FROM events as e, dateTimes as dt where dt.yyyymmdd >= ? and dt.event = e.rowid';
+    const query = 'SELECT DISTINCT events.rowid AS id FROM events, dateTimes WHERE dateTimes.yyyymmdd >= ? AND dateTimes.event = events.rowid';
     debug('getEvents', query, yyyymmdd);
     return db.all(query, yyyymmdd).
       then((result) => result.map((x) => x.id));
