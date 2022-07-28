@@ -34,7 +34,7 @@ app.use(express.json());
 
 const router = express.Router();
 const timekeeper = new TimeKeeper({
-  dbFilename: 'data/rsvps.sqlite'
+  dbFilename: getEnv('RSVPS_SQLITE', true) || 'data/rsvps.sqlite'
 });
 let db = {} as Database;
 timekeeper.setup().
