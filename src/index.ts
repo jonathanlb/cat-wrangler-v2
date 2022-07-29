@@ -24,6 +24,7 @@ dotenv.config();
 
 const app = express();
 
+useCors(app); // set up Cors ahead of rate limiter to forward error
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
@@ -44,7 +45,6 @@ const server = new Server({
   timekeeper
 });
 
-useCors(app);
 server.setupAlive();
 
 useCognito(app);
