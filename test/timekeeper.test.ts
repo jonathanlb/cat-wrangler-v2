@@ -5,14 +5,14 @@ import {
   validateYyyyMmDd
 } from '../src/timekeeper';
 
-function newTimeKeeper(): TimeKeeper {
+export function newTimeKeeper(): TimeKeeper {
   return new TimeKeeper({
     dbFilename: ':memory:'
   });
 }
 
-describe('Sqlite server tests', () => {
-  test('Instantiates a server', async () => {
+describe('Sqlite timekeeper tests', () => {
+  test('Instantiates a timekeeper', async () => {
     const tk = newTimeKeeper();
     await tk.setup();
   });

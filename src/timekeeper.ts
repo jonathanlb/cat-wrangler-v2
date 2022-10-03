@@ -529,6 +529,8 @@ export class TimeKeeper {
       'CREATE INDEX IF NOT EXISTS idx_rsvps_participant ON rsvps(participant)',
       'CREATE TABLE IF NOT EXISTS key_value (key TEXT UNIQUE, value TEXT)',
       'CREATE INDEX IF NOT EXISTS idx_key_value ON key_value(key)',
+      'CREATE TABLE IF NOT EXISTS rideshares (event INT NOT NULL, ' +
+      'participant INT NOT NULL, provideSeats INT, neighborhood TEXT, UNIQUE(event, participant))'
     ];
 
     const db = await this.openDb();
