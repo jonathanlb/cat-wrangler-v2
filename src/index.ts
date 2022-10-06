@@ -56,6 +56,7 @@ server.setupDatetimeGet().
   setupKeyRetrieval().
   setupNevers().
   setupUpdateSection().
+  setupRideShare().
   setupRsvp().
   setupUserGet().
   setupVenueGet();

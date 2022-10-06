@@ -2,6 +2,7 @@ import Debug from 'debug';
 import * as express from 'express';
 import { Database } from 'sqlite';
 
+import { RideShares } from './rideshares';
 import { TimeKeeper, validateYyyyMmDdOptDash } from './timekeeper';
 
 const debug = Debug('rsvp:server');
@@ -15,11 +16,13 @@ export interface ServerConfig {
 // XXX TODO check userId for event detail access
 export class Server {
   router: express.Router;
+  rideShares: RideShares;
   timekeeper: TimeKeeper;
 
   constructor(config: ServerConfig) {
     this.router = config.router;
     this.timekeeper = config.timekeeper;
+    this.rideShares = new RideShares();
   }
 
   /**
@@ -224,6 +227,65 @@ export class Server {
     return this;
   }
 
+  setupRideShare(): Server {
+    this.router.get(
+      '/rideshare/express/:eventId/:numSeats/:neighborhood',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
+            const eventId = parseInt(req.params.eventId, 10);
+            const numSeats = parseInt(req.params.numSeats, 10);
+            const { neighborhood } = req.params;
+            debug('rideshare/express', userId, eventId, numSeats);
+            await this.rideShares.expressRideInterest(
+              db, userId, eventId, numSeats, neighborhood);
+            const rides = await this.rideShares.getRideInterest(db, eventId);
+            res.status(200).send(JSON.stringify(rides));
+          } catch (err) {
+            errors('rideshare express', err);
+            res.status(500).send('rideshare error');
+          }
+        })
+      });
+
+      this.router.get(
+        '/rideshare/clear/:eventId',
+        async (req: express.Request, res: express.Response) => {
+          this.openDb(async (db: Database) => {
+            try {
+              const userId = parseInt(req.headers['x-userid'] as string, 10);
+              const eventId = parseInt(req.params.eventId, 10);
+              debug('rideshare/clear', userId, eventId);
+              await this.rideShares.clearRideInterest(
+                db, userId, eventId);
+              const rides = await this.rideShares.getRideInterest(db, eventId);
+              res.status(200).send(JSON.stringify(rides));
+            } catch (err) {
+              errors('rideshare clear', err);
+              res.status(500).send('rideshare error');
+            }
+          })
+        });
+
+        this.router.get(
+          '/rideshare/get/:eventId',
+          async (req: express.Request, res: express.Response) => {
+            this.openDb(async (db: Database) => {
+              try {
+                const eventId = parseInt(req.params.eventId, 10);
+                debug('rideshare/get', eventId);
+                const rides = await this.rideShares.getRideInterest(db, eventId);
+                res.status(200).send(JSON.stringify(rides));
+              } catch (err) {
+                errors('rideshare get', err);
+                res.status(500).send('rideshare error');
+              }
+            })
+          });
+    return this;
+  }
+
   setupRsvp(): Server {
     this.router.get(
       '/event/rsvp/:eventId/:dateTimeId/:rsvp', // XXX do we need eventId?
@@ -241,7 +303,7 @@ export class Server {
           } catch (err) {
             errors('rsvp', err);
             res.status(500).send('rsvp error');
-          } 
+          }
         })
       });
 
