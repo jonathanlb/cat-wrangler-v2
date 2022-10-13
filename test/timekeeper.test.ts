@@ -56,6 +56,7 @@ describe('Sqlite timekeeper tests', () => {
     const pid = await tk.createParticipant(db, name);
     const info = await tk.getUserInfo(db, pid);
     expect(info).toEqual({
+      editor: 0,
       email: '',
       id: 1,
       name,
@@ -145,6 +146,7 @@ describe('Sqlite timekeeper tests', () => {
 
     const e = await tk.getEvent(db, eid);
     expect(e).toEqual({
+      editable: false,
       dateTime: undefined,
       dateTimes: [],
       description: 'Swing those hips!',
@@ -159,12 +161,13 @@ describe('Sqlite timekeeper tests', () => {
     const tk = newTimeKeeper();
     const db = await tk.setup();
     const vid = 17;
-    const pid = 19;
+    const pid = await tk.createParticipant(db, 'Bilbo');
     const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
     const did = await tk.createDateTime(db, eid, '2022-03-23', '16:31', '5m');
     await tk.rsvp(db, eid, pid, did, 1);
     const e = await tk.getEvent(db, eid, pid);
     expect(e).toEqual({
+      editable: false,
       dateTime: undefined,
       dateTimes: [{
         attend: 1,
@@ -179,6 +182,58 @@ describe('Sqlite timekeeper tests', () => {
       name: 'Hula Contest',
       venue: 17
     });
+    await db.close();
+  });
+
+  test('Edits events', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const vid = 17;
+    const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
+    const pid = await tk.createParticipant(db, 'Bilbo', { editor: -1 });
+    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    expect(result).toBe(true);
+    const e = await tk.getEvent(db, eid);
+    expect(e?.description).toEqual('Shake it!');
+    await db.close();
+  });
+
+  test('Checks general editable priviledge', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const vid = 17;
+    const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
+    const pid = await tk.createParticipant(db, 'Bilbo');
+    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    expect(result).toBe(false);
+    const e = await tk.getEvent(db, eid);
+    expect(e?.description).toEqual('Swing those hips!');
+    await db.close();
+  });
+
+  test('Checks venue editable priviledge', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const vid = 17;
+    const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
+    const pid = await tk.createParticipant(db, 'Bilbo', { editor: vid });
+    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    expect(result).toBe(true);
+    const e = await tk.getEvent(db, eid);
+    expect(e?.description).toEqual('Shake it!');
+    await db.close();
+  });
+
+  test('Denies venue editable priviledge', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const vid = 17;
+    const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
+    const pid = await tk.createParticipant(db, 'Bilbo', { editor: vid+1 });
+    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    expect(result).toBe(false);
+    const e = await tk.getEvent(db, eid);
+    expect(e?.description).toEqual('Swing those hips!');
     await db.close();
   });
 
@@ -245,6 +300,7 @@ describe('Sqlite timekeeper tests', () => {
       yyyymmdd: '2022-03-23'
     };
     expect(e).toEqual({
+      editable: false,
       dateTime: dt,
       dateTimes: [dt],
       description: 'Swing those hips!',
@@ -271,6 +327,7 @@ describe('Sqlite timekeeper tests', () => {
       yyyymmdd: '2022-03-23'
     };
     expect(e).toEqual({
+      editable: false,
       dateTime: undefined,
       dateTimes: [dt],
       description: 'Swing those hips!',
@@ -280,6 +337,36 @@ describe('Sqlite timekeeper tests', () => {
     });
     await db.close();
   });
+
+  test('Retrieves an event with editable flag', async () => {
+    const tk = newTimeKeeper();
+    const db = await tk.setup();
+    const pid = await tk.createParticipant(db, 'Bilbo', { editor: 17 });
+    const eid = await tk.createEvent(db, 'Hula Contest', 17, 'Swing those hips!');
+    const did = await tk.createDateTime(db, eid, '2022-03-23', '16:31', '5m');
+    await tk.closeEvent(db, eid, did);
+    const e = await tk.getEvent(db, eid, pid);
+
+    const dt = {
+      attend: 0,
+      duration: '5m',
+      event: eid,
+      hhmm: '16:31',
+      id: did,
+      yyyymmdd: '2022-03-23'
+    };
+    expect(e).toEqual({
+      editable: true,
+      dateTime: dt,
+      dateTimes: [dt],
+      description: 'Swing those hips!',
+      id: eid,
+      name: 'Hula Contest',
+      venue: 17
+    });
+    await db.close();
+  });
+
 
   test('Joins rsvps to events', async () => {
     const eventName = 'Elevensies';
@@ -314,6 +401,7 @@ describe('Sqlite timekeeper tests', () => {
     expect(eventObj).toEqual({
       id: 1,
       name: eventName,
+      editable: false,
       description: 'Be a hobbit',
       venue: 1,
       dateTime: undefined,

@@ -8,12 +8,12 @@ import { TimeKeeper, validateYyyyMmDdOptDash } from './timekeeper';
 const debug = Debug('rsvp:server');
 const errors = Debug('rsvp:server:error');
 
+const EDIT_EVENT_MAX_B = parseInt(process.env['EDIT_EVENT_MAX_B'] || '4096', 10);
+const EDIT_EVENTS = process.env['EDIT_EVENTS']?.toLowerCase() === 'true';
 export interface ServerConfig {
   router: express.Router,
   timekeeper: TimeKeeper,
 }
-
-// XXX TODO check userId for event detail access
 export class Server {
   router: express.Router;
   rideShares: RideShares;
@@ -123,6 +123,30 @@ export class Server {
         });
       });
 
+    return this;
+  }
+
+  setupEventEdit(): Server {
+    if (EDIT_EVENTS) {
+      this.router.post(
+        '/event/edit/:eventId',
+        async (req: express.Request, res: express.Response) => {
+          this.openDb(async (db: Database) => {
+            try {
+              const userId = parseInt(req.headers['x-userid'] as string, 10);
+              const eventId = parseInt(req.params.eventId, 10);
+              debug('event new descrition body', req.body);
+              const content = req.body?.descriptionMd?.substr(0, EDIT_EVENT_MAX_B);
+              await this.timekeeper.editEvent(db, eventId, userId, content);
+              res.status(200).send('OK');
+            } catch (err) {
+              errors('event edit', err);
+              res.status(500).send('event edit error');
+            }
+          });
+        }
+      );
+    }
     return this;
   }
 

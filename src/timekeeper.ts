@@ -4,7 +4,7 @@ import { Database, open } from 'sqlite';
 import * as SqlString from 'sqlstring';
 
 const debug = Debug('rsvp:timekeeper');
-// const error = Debug('rsvp:timekeeper:error');
+const error = Debug('rsvp:timekeeper:error');
 
 export interface DateTime {
   attend?: number,
@@ -16,6 +16,7 @@ export interface DateTime {
 }
 
 export interface Event {
+  editable: boolean,
   dateTime?: number,
   dateTimes: Array<DateTime>,
   description: string,
@@ -25,6 +26,7 @@ export interface Event {
 }
 
 export interface ParticipantOptions {
+  editor?: number, // either a venue id, or -1 for true.
   email?: string,
   id?: number,
   organizer?: number,
@@ -195,14 +197,16 @@ export class TimeKeeper {
   async createParticipant(db: Database, name: string, opts?: ParticipantOptions):
     Promise<number> {
     const query = opts ?.id ?
-      'INSERT INTO participants(rowid, name, organizer, section, email) VALUES(:rowid, :name, :organizer, :section, :email)' :
-      'INSERT INTO participants(name, organizer, section, email) VALUES(:name, :organizer, :section, :email)';
+      'INSERT INTO participants(rowid, name, editor, organizer, section, email) VALUES(:rowid, :name, :editor, :organizer, :section, :email)' :
+      'INSERT INTO participants(name, editor, organizer, section, email) VALUES(:name, :editor, :organizer, :section, :email)';
     const section = opts ?.section || '';
     const organizer = opts ?.organizer || 0;
+    const editor = opts ?.editor || 0;
     const email = opts ?.email || '';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const queryValues: any = {
       ':name': name,
+      ':editor': editor,
       ':organizer': organizer,
       ':section': section,
       ':email': email
@@ -254,6 +258,29 @@ export class TimeKeeper {
     }
   }
 
+  async editEvent(db: Database, eid: number, uid: number, content: string): Promise<boolean> {
+    let query = 'SELECT editor FROM participants WHERE rowid = ?';
+    debug('editEvent', query);
+    const { editor } = await db.get(query, uid);
+    if (editor === 0) {
+      error('editEvent user, event, editor:', uid, eid, editor);
+      return false;
+    } else if (editor > 0) {
+      query = 'SELECT venue FROM events WHERE rowid = ?';
+      debug('editEvent', query);
+      const { venue } = await db.get(query, eid);
+      if (editor !== venue) {
+        error('editEvent user, event, editor:', uid, eid, editor);
+        return false;
+      }
+    }
+
+    query = 'UPDATE events SET description = ? WHERE rowid = ?';
+    debug('editEvent', query);
+    await db.run(query, content, eid);
+    return true;
+  }
+
   /**
     * @return a promise to dateTime info.
     */
@@ -285,7 +312,14 @@ export class TimeKeeper {
     // Put the datetimes on the event.
     let dtQuery: string;
     let dtQueryOpts: object;
+    let editable = false;
+
     if (userIdOpt) {
+      const permissionsQuery = 'SELECT editor FROM participants WHERE rowid = ?';
+      debug('getEvent permissions', permissionsQuery);
+      const { editor = 0 } = await db.get(permissionsQuery, userIdOpt) || {};
+      editable = editor < 0 || editor === event.venue;
+
       dtQuery =
         'SELECT dt.rowid AS id, dt.*, r.attend ' +
         'FROM dateTimes dt ' +
@@ -296,7 +330,6 @@ export class TimeKeeper {
         ':eventId': eventId,
         ':userId': userIdOpt
       };
-
     } else {
       dtQuery =
         'SELECT rowid AS id, event, yyyymmdd, hhmm, duration FROM dateTimes WHERE event = :eventId';
@@ -304,8 +337,16 @@ export class TimeKeeper {
         ':eventId': eventId
       };
     }
+    event.editable = editable;
     debug('getEvent dt', dtQuery, dtQueryOpts);
     event.dateTimes = await db.all(dtQuery, dtQueryOpts);
+    if (event.dateTimes) {
+      // cover up null results if participant hasn't rsvpd.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      event.dateTimes.forEach((dt: any) => {
+        if (null === dt.attend) dt.attend = 0 
+      });
+    }
     if (event.dateTime) {  // replace chosen dateTime id with the object
       event.dateTime = event.dateTimes.
         find((dt: DateTime) => dt.id === event.dateTime);
@@ -409,7 +450,7 @@ export class TimeKeeper {
    * @return promise to info.
    */
   async getUserInfo(db: Database, userId: number): Promise<ParticipantOptions | undefined> {
-    const query = 'SELECT rowid as id, name, section, organizer, email FROM participants WHERE id = ?';
+    const query = 'SELECT rowid as id, name, section, organizer, email, editor FROM participants WHERE id = ?';
     debug('getUserInfo', query, userId);
     return await db.get(query, userId);
   }
@@ -511,7 +552,7 @@ export class TimeKeeper {
       'CREATE INDEX IF NOT EXISTS idx_event_name ON events(name)',
       'CREATE INDEX IF NOT EXISTS idx_event_venue ON events(venue)',
       'CREATE TABLE IF NOT EXISTS participants (name TEXT NOT NULL UNIQUE, ' +
-      'section TEXT, organizer INT DEFAULT 0, email TEXT)',
+      'section TEXT, organizer INT DEFAULT 0, email TEXT, editor INT DEFAULT 0)',
       'CREATE INDEX IF NOT EXISTS idx_participants_name ON participants(name)',
       'CREATE TABLE IF NOT EXISTS sections (name TEXT NOT NULL UNIQUE)',
       'CREATE TABLE IF NOT EXISTS dateTimes (event INT, yyyymmdd TEXT, ' +

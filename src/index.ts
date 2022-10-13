@@ -61,6 +61,10 @@ server.setupDatetimeGet().
   setupUserGet().
   setupVenueGet();
 
+if (getEnv('EDIT_EVENTS', true)?.toLowerCase() === 'true') {
+  server.setupEventEdit();
+}
+
 const port: number = parseInt(
   getEnv('PORT', true) as string, 10);
 if (port && !isNaN(port)) {
@@ -162,7 +166,7 @@ function useCognito(app: express.Application) {
 function useCors(app: express.Application) {
   app.use((req: ExReq, res: ExRes, next: express.NextFunction) => {
     debug('cors');
-    res.header('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
     res.header('Access-Control-Allow-Headers',
                'Accept,Authorization,Content-type,Origin,X-Requested-With,X-Access-Token,X-Key');
     res.header('Access-Control-Expose-Headers', 'X-Access-Token');
