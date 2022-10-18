@@ -20,6 +20,7 @@ import { TimeKeeper } from './timekeeper';
 const debug = Debug('rsvp:index');
 const errors = Debug('rsvp:index:error');
 
+console.log('PID=', process.pid);
 debug('reading env');
 dotenv.config();
 
