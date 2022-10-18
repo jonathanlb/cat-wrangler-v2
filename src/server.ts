@@ -9,7 +9,6 @@ const debug = Debug('rsvp:server');
 const errors = Debug('rsvp:server:error');
 
 const EDIT_EVENT_MAX_B = parseInt(process.env['EDIT_EVENT_MAX_B'] || '4096', 10);
-const EDIT_EVENTS = process.env['EDIT_EVENTS']?.toLowerCase() === 'true';
 export interface ServerConfig {
   router: express.Router,
   timekeeper: TimeKeeper,
@@ -28,7 +27,7 @@ export class Server {
   /**
    * Wrap up server-side logic in an open/finally-close.
    */
-  private async openDb(f: (db: Database) => Promise<void>)  {
+  private async openDb(f: (db: Database) => Promise<void>) {
     const db = await this.timekeeper.openDb();
     try {
       await f(db);
@@ -127,26 +126,24 @@ export class Server {
   }
 
   setupEventEdit(): Server {
-    if (EDIT_EVENTS) {
-      this.router.post(
-        '/event/edit/:eventId',
-        async (req: express.Request, res: express.Response) => {
-          this.openDb(async (db: Database) => {
-            try {
-              const userId = parseInt(req.headers['x-userid'] as string, 10);
-              const eventId = parseInt(req.params.eventId, 10);
-              debug('event new descrition body', req.body);
-              const content = req.body?.descriptionMd?.substr(0, EDIT_EVENT_MAX_B);
-              await this.timekeeper.editEvent(db, eventId, userId, content);
-              res.status(200).send('OK');
-            } catch (err) {
-              errors('event edit', err);
-              res.status(500).send('event edit error');
-            }
-          });
-        }
-      );
-    }
+    this.router.post(
+      '/event/edit/:eventId',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
+            const eventId = parseInt(req.params.eventId, 10);
+            debug('event new descrition body', req.body);
+            const content = req.body?.descriptionMd?.substr(0, EDIT_EVENT_MAX_B);
+            await this.timekeeper.editEvent(db, eventId, userId, content);
+            res.status(200).send('OK');
+          } catch (err) {
+            errors('event edit', err);
+            res.status(500).send('event edit error');
+          }
+        });
+      }
+    );
     return this;
   }
 
@@ -209,7 +206,7 @@ export class Server {
         });
       });
 
-      return this;
+    return this;
   }
 
   setupNevers(): Server {
@@ -230,23 +227,23 @@ export class Server {
         });
       });
 
-      this.router.get(
-        '/event/never',
-        async (req: express.Request, res: express.Response) => {
-          this.openDb(async (db: Database) => {
-            try {
-              const userId = parseInt(req.headers['x-userid'] as string, 10);
-              const todayStr = new Date().toISOString().split('T')[0];
-              debug('nevers', userId, todayStr);
-              const nevers = await this.timekeeper.getNevers(
-                db, userId, todayStr);
-              res.status(200).send(JSON.stringify(nevers));
-            } catch (err) {
-              errors('get nevers', err);
-              res.status(500).send('get nevers error');
-            }
-          });
+    this.router.get(
+      '/event/never',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
+            const todayStr = new Date().toISOString().split('T')[0];
+            debug('nevers', userId, todayStr);
+            const nevers = await this.timekeeper.getNevers(
+              db, userId, todayStr);
+            res.status(200).send(JSON.stringify(nevers));
+          } catch (err) {
+            errors('get nevers', err);
+            res.status(500).send('get nevers error');
+          }
         });
+      });
 
     return this;
   }
@@ -273,40 +270,40 @@ export class Server {
         })
       });
 
-      this.router.get(
-        '/rideshare/clear/:eventId',
-        async (req: express.Request, res: express.Response) => {
-          this.openDb(async (db: Database) => {
-            try {
-              const userId = parseInt(req.headers['x-userid'] as string, 10);
-              const eventId = parseInt(req.params.eventId, 10);
-              debug('rideshare/clear', userId, eventId);
-              await this.rideShares.clearRideInterest(
-                db, userId, eventId);
-              const rides = await this.rideShares.getRideInterest(db, eventId);
-              res.status(200).send(JSON.stringify(rides));
-            } catch (err) {
-              errors('rideshare clear', err);
-              res.status(500).send('rideshare error');
-            }
-          })
-        });
+    this.router.get(
+      '/rideshare/clear/:eventId',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
+            const eventId = parseInt(req.params.eventId, 10);
+            debug('rideshare/clear', userId, eventId);
+            await this.rideShares.clearRideInterest(
+              db, userId, eventId);
+            const rides = await this.rideShares.getRideInterest(db, eventId);
+            res.status(200).send(JSON.stringify(rides));
+          } catch (err) {
+            errors('rideshare clear', err);
+            res.status(500).send('rideshare error');
+          }
+        })
+      });
 
-        this.router.get(
-          '/rideshare/get/:eventId',
-          async (req: express.Request, res: express.Response) => {
-            this.openDb(async (db: Database) => {
-              try {
-                const eventId = parseInt(req.params.eventId, 10);
-                debug('rideshare/get', eventId);
-                const rides = await this.rideShares.getRideInterest(db, eventId);
-                res.status(200).send(JSON.stringify(rides));
-              } catch (err) {
-                errors('rideshare get', err);
-                res.status(500).send('rideshare error');
-              }
-            })
-          });
+    this.router.get(
+      '/rideshare/get/:eventId',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const eventId = parseInt(req.params.eventId, 10);
+            debug('rideshare/get', eventId);
+            const rides = await this.rideShares.getRideInterest(db, eventId);
+            res.status(200).send(JSON.stringify(rides));
+          } catch (err) {
+            errors('rideshare get', err);
+            res.status(500).send('rideshare error');
+          }
+        })
+      });
     return this;
   }
 
@@ -323,7 +320,7 @@ export class Server {
             debug('rsvp', userId, eventId, dateTimeId, rsvp);
             await this.timekeeper.rsvp(
               db, eventId, userId, dateTimeId, rsvp);
-              res.status(200).send('OK');
+            res.status(200).send('OK');
           } catch (err) {
             errors('rsvp', err);
             res.status(500).send('rsvp error');
@@ -331,23 +328,23 @@ export class Server {
         })
       });
 
-      this.router.get(
-        '/event/rsvp/:eventId',
-        async (req: express.Request, res: express.Response) => {
-          this.openDb(async (db: Database) => {
-            try {
-              const userId = parseInt(req.headers['x-userid'] as string, 10);
-              const eventId = parseInt(req.params.eventId, 10);
-              debug('get-rsvp', userId, eventId);
-              const result = await this.timekeeper.getRsvps(
-                db, eventId, userId);
-                res.status(200).send(JSON.stringify(result));
-            } catch (err) {
-              errors('get-rsvp', err);
-              res.status(500).send('get-rsvp error');
-            }
-          });
+    this.router.get(
+      '/event/rsvp/:eventId',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const userId = parseInt(req.headers['x-userid'] as string, 10);
+            const eventId = parseInt(req.params.eventId, 10);
+            debug('get-rsvp', userId, eventId);
+            const result = await this.timekeeper.getRsvps(
+              db, eventId, userId);
+            res.status(200).send(JSON.stringify(result));
+          } catch (err) {
+            errors('get-rsvp', err);
+            res.status(500).send('get-rsvp error');
+          }
         });
+      });
     return this;
   }
 
@@ -438,7 +435,7 @@ export class Server {
         this.openDb(async (db: Database) => {
           try {
             debug('venue list');
-            const result = await this.timekeeper.getVenues(db, { });
+            const result = await this.timekeeper.getVenues(db, {});
             res.status(200).send(JSON.stringify(result));
           } catch (err) {
             errors('venue list', err);

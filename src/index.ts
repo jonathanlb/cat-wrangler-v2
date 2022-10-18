@@ -1,5 +1,6 @@
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { CognitoAccessTokenPayload } from 'aws-jwt-verify/jwt-model';
+import cors from 'cors';
 import Debug from 'debug';
 import express from 'express';
 import * as dotenv from 'dotenv';
@@ -24,7 +25,7 @@ dotenv.config();
 
 const app = express();
 
-useCors(app); // set up Cors ahead of rate limiter to forward error
+app.use(cors()); // set up Cors ahead of rate limiter to forward error
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000,
@@ -62,6 +63,7 @@ server.setupDatetimeGet().
   setupVenueGet();
 
 if (getEnv('EDIT_EVENTS', true)?.toLowerCase() === 'true') {
+  debug('enabling event editing');
   server.setupEventEdit();
 }
 
@@ -161,18 +163,4 @@ function useCognito(app: express.Application) {
   } else {
     console.warn('missing Cognito config, check env variables');
   }
-}
-
-function useCors(app: express.Application) {
-  app.use((req: ExReq, res: ExRes, next: express.NextFunction) => {
-    debug('cors');
-    res.header('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-    res.header('Access-Control-Allow-Headers',
-               'Accept,Authorization,Content-type,Origin,X-Requested-With,X-Access-Token,X-Key');
-    res.header('Access-Control-Expose-Headers', 'X-Access-Token');
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-    next();
-  });
 }
