@@ -5,7 +5,6 @@ import Debug from 'debug';
 import express from 'express';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
-import * as jwt from 'jsonwebtoken';
 import helmet from 'helmet';
 import https from 'https';
 import rateLimit from 'express-rate-limit';
@@ -140,7 +139,9 @@ function useCognito(app: express.Application) {
         verifier.verify(accessTokenFromClient).
           then(async (payload: CognitoAccessTokenPayload) => {
             debug('payload', payload);
-            const { email, exp } = jwt.decode(accessTokenFromClient) as jwt.JwtPayload;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { email } = payload as any
+            const exp = payload.exp.valueOf()
             if ((exp || 0) < now_s) {
               const err = 'expired id token';
               debug(err);
