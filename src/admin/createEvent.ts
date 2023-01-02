@@ -1,5 +1,5 @@
 // Create a new event and insert it into a sqlite3 db.
-// Usage: node src/admin/createEvent.js myEvent.json data/db.sqlite3
+// Usage: node dist/createEvent myEvent.json [data/db.sqlite3]
 //
 // Example event configuration file contents:
 // {
@@ -16,14 +16,20 @@ import { EventCreator } from './eventCreator';
 import * as dotenv from 'dotenv';
 
 const debug = Debug('rsvp:createEvent');
-const eventConfigFile = process.argv[2];
+if (process.argv.length < 3) {
+  throw new Error('usage: node dist/createEvent.js <event.json> [db.sqlite3]');
+}
 
 debug('reading env');
 dotenv.config();
 
-const tkConfig = {
-    dbFilename: process.env['RSVPS_SQLITE'] || 'data/rsvps.sqlite',
-};
+const eventConfigFile = process.argv[2];
+const dbFilename = process.argv.length > 3 ?
+  process.argv[3] :
+  process.env['RSVPS_SQLITE'] || 'data/rsvps.sqlite';
+
+
+const tkConfig = { dbFilename };
 
 EventCreator.parseEventConfig(eventConfigFile).
   then((eventConfig) => {

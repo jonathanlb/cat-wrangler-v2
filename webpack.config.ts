@@ -4,6 +4,7 @@ const nodeExternals = require('webpack-node-externals');
 module.exports = {
   entry: {
     createEvent: './src/admin/createEvent.ts',
+    deleteEvent: './src/admin/deleteEvent.ts',
     server: './src/index.ts',
   },
   target: 'node',

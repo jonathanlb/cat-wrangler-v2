@@ -1,0 +1,10 @@
+{
+  "name": "Extravaganza",
+  "venue": 63,
+  "description": "# Best Test Event Evuh\nRSVP or ....",
+  "dateTimes": [
+    { "yyyymmdd": "2022-12-01", "hhmm": "8:39", "duration": "45m" },
+    { "yyyymmdd": "2022-12-01", "hhmm": "9:06", "duration": "45m" }
+  ]
+}
+
