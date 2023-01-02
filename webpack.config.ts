@@ -2,7 +2,10 @@ const path = require('path');
 const nodeExternals = require('webpack-node-externals');
 
 module.exports = {
-  entry: './src/index.ts',
+  entry: {
+    createEvent: './src/admin/createEvent.ts',
+    server: './src/index.ts',
+  },
   target: 'node',
   externals: [nodeExternals()], // avoid warning inside express
   module: {
@@ -21,6 +24,6 @@ module.exports = {
   plugins: [],
   output: {
     path: path.join(__dirname, 'dist'),
-    filename: 'index.js'
+    filename: '[name].js'
   }
 };

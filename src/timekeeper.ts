@@ -543,6 +543,16 @@ export class TimeKeeper {
   }
 
   /**
+   * Set the possible datetimes of an event to one option.
+   * WARNING: the method does not validate the ids of the event or datetime.
+   */
+  async setDateTime(db: Database, eventId: number, dateTimeId: number):
+    Promise<void> {
+    const query = 'UPDATE events SET dateTime = ? WHERE rowid = ?';
+    await db.run(query, dateTimeId, eventId);
+  }
+
+  /**
    * Initialize the database.
    */
   async setup(): Promise<Database> {
