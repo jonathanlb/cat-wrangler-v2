@@ -43,7 +43,7 @@ describe('Sqlite timekeeper tests', () => {
     const email = 'bilbo@bag.end';
     const tk = newTimeKeeper();
     const db = await tk.setup();
-    const pid = await tk.createParticipant(db, name, { email });
+    const pid = await tk.createParticipant(db, name, { email: email.toUpperCase() });
     const pid1 = await tk.getUserIdByEmail(db, email);
     expect(pid1).toEqual(pid);
     await db.close();

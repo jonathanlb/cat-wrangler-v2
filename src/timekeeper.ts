@@ -436,7 +436,7 @@ export class TimeKeeper {
    * @return promise to id.
    */
   async getUserIdByEmail(db: Database, email: string): Promise<number> {
-    const query = SqlString.format('SELECT rowid FROM participants WHERE email = ?', [email.trim()]);
+    const query = SqlString.format('SELECT rowid FROM participants WHERE email = ? COLLATE NOCASE', [email.trim()]);
     debug('getUserIdByEmail', query);
     const result = await db.get(query);
     if (!result) {
