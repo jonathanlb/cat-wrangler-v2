@@ -11,6 +11,10 @@ export function newTimeKeeper(): TimeKeeper {
   });
 }
 
+function now(): number {
+  return new Date().getTime();
+}
+
 describe('Sqlite timekeeper tests', () => {
   test('Instantiates a timekeeper', async () => {
     const tk = newTimeKeeper();
@@ -191,7 +195,13 @@ describe('Sqlite timekeeper tests', () => {
     const vid = 17;
     const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
     const pid = await tk.createParticipant(db, 'Bilbo', { editor: -1 });
-    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    const edit = {
+      author: pid,
+      event: eid,
+      description: 'Shake it!',
+      timestamp: now(),
+    }
+    const result = await tk.editEvent(db, edit);
     expect(result).toBe(true);
     const e = await tk.getEvent(db, eid);
     expect(e?.description).toEqual('Shake it!');
@@ -204,7 +214,13 @@ describe('Sqlite timekeeper tests', () => {
     const vid = 17;
     const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
     const pid = await tk.createParticipant(db, 'Bilbo');
-    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    const edit = {
+      author: pid,
+      event: eid,
+      description: 'Shake it!',
+      timestamp: now(),
+    }
+    const result = await tk.editEvent(db, edit);
     expect(result).toBe(false);
     const e = await tk.getEvent(db, eid);
     expect(e?.description).toEqual('Swing those hips!');
@@ -217,7 +233,13 @@ describe('Sqlite timekeeper tests', () => {
     const vid = 17;
     const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
     const pid = await tk.createParticipant(db, 'Bilbo', { editor: vid });
-    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    const edit = {
+      author: pid,
+      event: eid,
+      description: 'Shake it!',
+      timestamp: now(),
+    }
+    const result = await tk.editEvent(db, edit);
     expect(result).toBe(true);
     const e = await tk.getEvent(db, eid);
     expect(e?.description).toEqual('Shake it!');
@@ -230,7 +252,13 @@ describe('Sqlite timekeeper tests', () => {
     const vid = 17;
     const eid = await tk.createEvent(db, 'Hula Contest', vid, 'Swing those hips!');
     const pid = await tk.createParticipant(db, 'Bilbo', { editor: vid+1 });
-    const result = await tk.editEvent(db, eid, pid, 'Shake it!');
+    const edit = {
+      author: pid,
+      event: eid,
+      description: 'Shake it!',
+      timestamp: now(),
+    }
+    const result = await tk.editEvent(db, edit);
     expect(result).toBe(false);
     const e = await tk.getEvent(db, eid);
     expect(e?.description).toEqual('Swing those hips!');

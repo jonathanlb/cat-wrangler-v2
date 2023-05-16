@@ -15,6 +15,7 @@ import { Request as ExReq, Response as ExRes } from 'express';
 
 import { Server } from './server';
 import { TimeKeeper } from './timekeeper';
+import { DescriptionArchive } from './descriptionarchive';
 
 const debug = Debug('rsvp:index');
 const errors = Debug('rsvp:index:error');
@@ -38,10 +39,16 @@ const router = express.Router();
 const timekeeper = new TimeKeeper({
   dbFilename: getEnv('RSVPS_SQLITE', true) || 'data/rsvps.sqlite'
 });
-let db = {} as Database;
+const descriptionArchive = new DescriptionArchive({
+  dbFilename: getEnv('DESCS_SQLITE', true) || 'data/descs.sqlite'
+})
+descriptionArchive.setup().
+  then(db => db.close());
+let tkDb = {} as Database;
 timekeeper.setup().
-  then(x => db = x); // XXX need to wait for setup before serving...
+  then(x => tkDb = x); // XXX need to wait for setup before serving...
 const server = new Server({ 
+  descriptionArchive,
   router,
   timekeeper
 });
@@ -147,7 +154,7 @@ function useCognito(app: express.Application) {
               debug(err);
               return res.status(401).send(err);
             }
-            const id = await timekeeper.getUserIdByEmail(db, email);
+            const id = await timekeeper.getUserIdByEmail(tkDb, email);
             if (id < 0) {
               const err = 'invalid user id';
               errors(err);

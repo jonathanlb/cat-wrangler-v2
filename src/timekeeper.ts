@@ -1,7 +1,8 @@
 import Debug from 'debug';
-import sqlite3 from 'sqlite3';
-import { Database, open } from 'sqlite';
+import { Database } from 'sqlite';
 import * as SqlString from 'sqlstring';
+import { openDb } from './db';
+import { Edit } from './descriptionarchive';
 
 const debug = Debug('rsvp:timekeeper');
 const error = Debug('rsvp:timekeeper:error');
@@ -258,26 +259,26 @@ export class TimeKeeper {
     }
   }
 
-  async editEvent(db: Database, eid: number, uid: number, content: string): Promise<boolean> {
+  async editEvent(db: Database, edit: Edit): Promise<boolean> {
     let query = 'SELECT editor FROM participants WHERE rowid = ?';
     debug('editEvent', query);
-    const { editor } = await db.get(query, uid);
+    const { editor } = await db.get(query, edit.author);
     if (editor === 0) {
-      error('editEvent user, event, editor:', uid, eid, editor);
+      error('editEvent user, event, editor:', edit.author, edit.event, editor);
       return false;
     } else if (editor > 0) {
       query = 'SELECT venue FROM events WHERE rowid = ?';
       debug('editEvent', query);
-      const { venue } = await db.get(query, eid);
+      const { venue } = await db.get(query, edit.event);
       if (editor !== venue) {
-        error('editEvent user, event, editor:', uid, eid, editor);
+        error('editEvent user, event, editor:', edit.author, edit.event, editor);
         return false;
       }
     }
 
     query = 'UPDATE events SET description = ? WHERE rowid = ?';
     debug('editEvent', query);
-    await db.run(query, content, eid);
+    await db.run(query, edit.description, edit.event);
     return true;
   }
 
@@ -511,10 +512,7 @@ export class TimeKeeper {
   }
 
   async openDb(): Promise<Database> {
-    return open<sqlite3.Database, sqlite3.Statement>({
-      filename: this.config.dbFilename,
-      driver: sqlite3.Database
-    });
+    return openDb(this.config.dbFilename);
   }
 
   /**

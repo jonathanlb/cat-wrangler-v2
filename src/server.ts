@@ -4,6 +4,7 @@ import { Database } from 'sqlite';
 
 import { RideShares } from './rideshares';
 import { TimeKeeper, validateYyyyMmDdOptDash } from './timekeeper';
+import { DescriptionArchive } from './descriptionarchive';
 
 const debug = Debug('rsvp:server');
 const errors = Debug('rsvp:server:error');
@@ -12,8 +13,10 @@ const EDIT_EVENT_MAX_B = parseInt(process.env['EDIT_EVENT_MAX_B'] || '4096', 10)
 export interface ServerConfig {
   router: express.Router,
   timekeeper: TimeKeeper,
+  descriptionArchive: DescriptionArchive,
 }
 export class Server {
+  descArchive: DescriptionArchive;
   router: express.Router;
   rideShares: RideShares;
   timekeeper: TimeKeeper;
@@ -22,6 +25,7 @@ export class Server {
     this.router = config.router;
     this.timekeeper = config.timekeeper;
     this.rideShares = new RideShares();
+    this.descArchive = config.descriptionArchive;
   }
 
   /**
@@ -131,12 +135,27 @@ export class Server {
       async (req: express.Request, res: express.Response) => {
         this.openDb(async (db: Database) => {
           try {
-            const userId = parseInt(req.headers['x-userid'] as string, 10);
-            const eventId = parseInt(req.params.eventId, 10);
             debug('event new descrition body', req.body);
-            const content = req.body?.descriptionMd?.substr(0, EDIT_EVENT_MAX_B);
-            await this.timekeeper.editEvent(db, eventId, userId, content);
+            const edit = {
+              author: parseInt(req.headers['x-userid'] as string, 10),
+              event: parseInt(req.params.eventId, 10),
+              description: req.body?.descriptionMd?.substr(0, EDIT_EVENT_MAX_B),
+              timestamp: new Date().getTime(),
+            }
+            await this.timekeeper.editEvent(db, edit);
             res.status(200).send('OK');
+
+            this.descArchive.openDb().then(
+              async (arDb: Database) => {
+                try {
+                  this.descArchive.logEdit(arDb, edit);
+                } catch (e) {
+                  errors('logEdit', e);
+                } finally {
+                  arDb.close();
+                }
+              });
+
           } catch (err) {
             errors('event edit', err);
             res.status(500).send('event edit error');

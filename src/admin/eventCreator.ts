@@ -5,6 +5,7 @@ import { Database } from 'sqlite';
 import { DateTime, Event, TimeKeeper, TimeKeeperOpts } from '../timekeeper';
 
 const debug = Debug('rsvp:createEvent');
+const errors = Debug('rsvp:createEvent:error');
 
 export class EventCreator {
   tk: TimeKeeper;
@@ -35,13 +36,14 @@ export class EventCreator {
       }
 
       return eid;
+    } catch(e) {
+      errors('failed to create event: ' + e);
+      return -1;
     } finally {
       if (!dbOpt) {
         db.close();
       }
     }
-
-    return -1;
   }
 
   
