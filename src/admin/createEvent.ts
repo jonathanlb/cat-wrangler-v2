@@ -29,7 +29,12 @@ const dbFilename = process.argv.length > 3 ?
   process.env['RSVPS_SQLITE'] || 'data/rsvps.sqlite';
 
 
-const tkConfig = { dbFilename };
+const tkConfig = {
+  dbFilename,
+  email: '',
+  icalOrgName: '',
+  siteURL: ''
+ };
 
 EventCreator.parseEventConfig(eventConfigFile).
   then((eventConfig) => {

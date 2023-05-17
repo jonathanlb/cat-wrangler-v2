@@ -37,7 +37,10 @@ app.use(express.json());
 
 const router = express.Router();
 const timekeeper = new TimeKeeper({
-  dbFilename: getEnv('RSVPS_SQLITE', true) || 'data/rsvps.sqlite'
+  dbFilename: getEnv('RSVPS_SQLITE', true) || 'data/rsvps.sqlite',
+  email: getEnv('ICAL_EMAIL') || '',
+  icalOrgName: getEnv('ICAL_NAME') || '',
+  siteURL: getEnv('ICAL_SITE_URL') || '',
 });
 const descriptionArchive = new DescriptionArchive({
   dbFilename: getEnv('DESCS_SQLITE', true) || 'data/descs.sqlite'

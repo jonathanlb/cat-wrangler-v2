@@ -126,6 +126,27 @@ export class Server {
         });
       });
 
+    this.router.get(
+      '/event/ical/:dateTimeId',
+      async (req: express.Request, res: express.Response) => {
+        this.openDb(async (db: Database) => {
+          try {
+            const dtId = parseInt(req.params.dateTimeId, 10);
+            const cal = await this.timekeeper.getICal(db, dtId);
+            res.status(200).send(cal.toString());
+          } catch (err) {
+            errors('event ical', err);
+            res.writeHead(
+              200,
+              {
+                'Content-type': 'text/calendar',
+                'Content-Disposition': 'attachment; filename="event.ics"'
+              });
+            res.status(500).send('ical error: ' + (err as Error).message);
+          }
+        });
+      });
+
     return this;
   }
 

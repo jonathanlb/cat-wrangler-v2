@@ -1,6 +1,13 @@
 import { EventCreator } from '../src/admin/eventCreator';
 import { Event } from '../src/timekeeper';
 
+const tkConfig = {
+  dbFilename: ':memory:',
+  email: '',
+  icalOrgName: '',
+  siteURL: '',
+};
+
 describe('eventCreator tests', () => {
   test('reads json event', async () => {
     const event = await EventCreator.parseEventConfig(
@@ -9,7 +16,7 @@ describe('eventCreator tests', () => {
   });
 
   test('records an event', async () => {
-    const creator = new EventCreator({ dbFilename: ':memory:' });
+    const creator = new EventCreator(tkConfig);
     const db = await creator.tk.setup();
     const vid = await creator.tk.createVenue(db, 'The Bandshell', 'In the park');
     const ec = {
@@ -27,7 +34,7 @@ describe('eventCreator tests', () => {
   });
 
   test('records an event with a set time', async () => {
-    const creator = new EventCreator({ dbFilename: ':memory:' });
+    const creator = new EventCreator(tkConfig);
     const db = await creator.tk.setup();
     const vid = await creator.tk.createVenue(db, 'The Bandshell', 'In the park');
     const ec = {

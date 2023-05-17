@@ -1,4 +1,6 @@
 import Debug from 'debug';
+import dayjs from 'dayjs';
+import ical, { ICalCalendar } from 'ical-generator';
 import { Database } from 'sqlite';
 import * as SqlString from 'sqlstring';
 import { openDb } from './db';
@@ -35,7 +37,10 @@ export interface ParticipantOptions {
 }
 
 export interface TimeKeeperOpts {
-  dbFilename: string
+  dbFilename: string,
+  email: string,
+  icalOrgName: string,
+  siteURL: string,
 }
 
 export interface Venue {
@@ -78,12 +83,24 @@ export function validateDuration(duration: string): string {
   return duration;
 }
 
+export function duration2m(duration: string): number {
+  const m = duration.match(/^([0-9]+)m$/);
+  if (m && m.length > 1) {
+    return parseInt(m[1], 10);
+  } else {
+    throw new Error(`duration validation: ${duration}`);
+  }
+}
+
 export class TimeKeeper {
   config: TimeKeeperOpts;
 
   constructor(opts: TimeKeeperOpts) {
     this.config = {
-      dbFilename: opts.dbFilename
+      dbFilename: opts.dbFilename,
+      email: opts.email,
+      icalOrgName: opts.icalOrgName,
+      siteURL: opts.siteURL
     };
   }
 
@@ -164,9 +181,9 @@ export class TimeKeeper {
     // RSVP negative for never dates
     const neverQuery =
       'INSERT INTO rsvps(event, participant, dateTime, attend, timestamp) ' +
-            `SELECT ${event}, nevers.participant, ${dateTimeId}, -1, ${ts} ` +
-            'FROM nevers WHERE yyyymmdd=?';
-            debug('createDateTime never', neverQuery, yyyymmdd);
+      `SELECT ${event}, nevers.participant, ${dateTimeId}, -1, ${ts} ` +
+      'FROM nevers WHERE yyyymmdd=?';
+    debug('createDateTime never', neverQuery, yyyymmdd);
     await db.run(neverQuery, yyyymmdd);
 
     return dateTimeId;
@@ -197,13 +214,13 @@ export class TimeKeeper {
    */
   async createParticipant(db: Database, name: string, opts?: ParticipantOptions):
     Promise<number> {
-    const query = opts ?.id ?
+    const query = opts?.id ?
       'INSERT INTO participants(rowid, name, editor, organizer, section, email) VALUES(:rowid, :name, :editor, :organizer, :section, :email)' :
       'INSERT INTO participants(name, editor, organizer, section, email) VALUES(:name, :editor, :organizer, :section, :email)';
-    const section = opts ?.section || '';
-    const organizer = opts ?.organizer || 0;
-    const editor = opts ?.editor || 0;
-    const email = opts ?.email || '';
+    const section = opts?.section || '';
+    const organizer = opts?.organizer || 0;
+    const editor = opts?.editor || 0;
+    const email = opts?.email || '';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const queryValues: any = {
       ':name': name,
@@ -212,8 +229,8 @@ export class TimeKeeper {
       ':section': section,
       ':email': email
     };
-    if (opts ?.id) {
-      queryValues[':rowid'] = opts ?.id;
+    if (opts?.id) {
+      queryValues[':rowid'] = opts?.id;
     }
     debug('createParticipant', query)
     const result = await db.run(query, queryValues);
@@ -247,10 +264,10 @@ export class TimeKeeper {
       if (err.message ===
         'SQLITE_CONSTRAINT: UNIQUE constraint failed: venues.name') {
         const venue = await this.getVenueByName(db, name) as Venue;
-        if (venue ?.address === address) {
+        if (venue?.address === address) {
           return venue.id;
         } else {
-          const msg = `createVenue cannot update address from "${venue ?.address}" to "${address}"`;
+          const msg = `createVenue cannot update address from "${venue?.address}" to "${address}"`;
           throw new Error(msg);
         }
       } else {
@@ -345,7 +362,7 @@ export class TimeKeeper {
       // cover up null results if participant hasn't rsvpd.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       event.dateTimes.forEach((dt: any) => {
-        if (null === dt.attend) dt.attend = 0 
+        if (null === dt.attend) dt.attend = 0
       });
     }
     if (event.dateTime) {  // replace chosen dateTime id with the object
@@ -377,6 +394,38 @@ export class TimeKeeper {
     debug('getEvents', query, yyyymmdd);
     return db.all(query, yyyymmdd).
       then((result) => result.map((x) => x.id));
+  }
+
+  async getICal(db: Database, dtId: number):
+    Promise<ICalCalendar> {
+    let query = 'SELECT event AS eventId, yyyymmdd, hhmm, duration FROM dateTimes WHERE rowid=?';
+    debug('ical', query, dtId);
+    let result = await db.get(query, dtId);
+    const { eventId, yyyymmdd, hhmm, duration } = result;
+    const start = new Date(`${yyyymmdd} ${hhmm}`); // XXX local TZ?
+    const end = dayjs(start).add(duration2m(duration), 'm');
+
+    query = 'SELECT name, description, venue AS venueId FROM events WHERE rowid=?'
+    debug('ical', query, eventId);
+    result = await db.get(query, eventId);
+    const { name, description, venueId } = result;
+
+    const [venue] = await this.getVenues(db, {id: venueId});
+
+    const cal = ical();
+    const event = cal.createEvent({
+      start: start,
+      end: end.toDate(),
+      summary: name,
+      description: description,
+      organizer: `${this.config.icalOrgName} <${this.config.email}>`,
+      url: this.config.siteURL
+    });
+    event.location({
+      title: venue.name,
+      address: venue.address
+    });
+    return cal;
   }
 
   async getNevers(db: Database, participantId: number, sinceOpt?: string):
@@ -482,7 +531,7 @@ export class TimeKeeper {
   }
 
   async getVenues(db: Database, queryOpts: VenueOptions): Promise<Array<Venue>> {
-    let query =  'SELECT rowid AS id, * FROM venues';
+    let query = 'SELECT rowid AS id, * FROM venues';
     if (queryOpts.id) {
       query = `SELECT rowid AS id, * FROM venues WHERE rowid=${queryOpts.id}`;
     }
@@ -638,6 +687,6 @@ export class TimeKeeper {
       return lcSection;
     }
     const info = await this.getUserInfo(db, userId);
-    return info ?.section || '';
+    return info?.section || '';
   }
 }
