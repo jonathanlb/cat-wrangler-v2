@@ -41,6 +41,7 @@ export interface TimeKeeperOpts {
   email: string,
   icalOrgName: string,
   siteURL: string,
+  timezone?: string,
 }
 
 export interface Venue {
@@ -100,7 +101,8 @@ export class TimeKeeper {
       dbFilename: opts.dbFilename,
       email: opts.email,
       icalOrgName: opts.icalOrgName,
-      siteURL: opts.siteURL
+      siteURL: opts.siteURL,
+      timezone: opts.timezone
     };
   }
 
@@ -402,7 +404,7 @@ export class TimeKeeper {
     debug('ical', query, dtId);
     let result = await db.get(query, dtId);
     const { eventId, yyyymmdd, hhmm, duration } = result;
-    const start = new Date(`${yyyymmdd} ${hhmm}`); // XXX local TZ?
+    const start = new Date(`${yyyymmdd} ${hhmm}`); // set tz later
     const end = dayjs(start).add(duration2m(duration), 'm');
 
     query = 'SELECT name, description, venue AS venueId FROM events WHERE rowid=?'
@@ -421,6 +423,9 @@ export class TimeKeeper {
       organizer: `${this.config.icalOrgName} <${this.config.email}>`,
       url: this.config.siteURL
     });
+    if (this.config.timezone) {
+      event.timezone(this.config.timezone);
+    }
     event.location({
       title: venue.name,
       address: venue.address

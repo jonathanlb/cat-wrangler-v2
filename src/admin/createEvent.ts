@@ -33,7 +33,7 @@ const tkConfig = {
   dbFilename,
   email: '',
   icalOrgName: '',
-  siteURL: ''
+  siteURL: '',
  };
 
 EventCreator.parseEventConfig(eventConfigFile).

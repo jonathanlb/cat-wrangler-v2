@@ -41,6 +41,7 @@ const timekeeper = new TimeKeeper({
   email: getEnv('ICAL_EMAIL') || '',
   icalOrgName: getEnv('ICAL_NAME') || '',
   siteURL: getEnv('ICAL_SITE_URL') || '',
+  timezone: getEnv('TZ', true) || ''
 });
 const descriptionArchive = new DescriptionArchive({
   dbFilename: getEnv('DESCS_SQLITE', true) || 'data/descs.sqlite'
